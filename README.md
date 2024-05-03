@@ -36,6 +36,7 @@ $ cargo run
 - Use sparse grid for saved output
 - Make the editor state part of the saved grid json? (might just be for quick saves)
 - Better save paths, (maybe keep the quick-save though)
+- Add Load method that isn't quick-save
 - Make saves pretty-printed, for readability
 - change grid size, (and keep current grid)
 - Make a ui (if bevy ui uses css, im not using bevy ui)
