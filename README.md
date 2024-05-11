@@ -25,15 +25,14 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- Make Pallet (tile selector so you can see what your doing)
 - Use icon name instead of index for icon selector (will make saves more readable)
+- Use sparse grid for saved output
 - Be able to change the default, and make default more obvious
 - Something to add more tiles to the pallet
 - Remove rainbow colors, (but keep a secret toggle?)
 
 ### For small extensions:
 
-- Use sparse grid for saved output
 - Make the editor state part of the saved grid json? (might just be for quick saves)
 - Better save paths, (maybe keep the quick-save though)
 - Add Load method that isn't quick-save
