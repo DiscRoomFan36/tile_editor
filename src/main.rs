@@ -11,26 +11,45 @@ use bevy::{asset::LoadedFolder, input, prelude::*};
 use mouse_stuff::*;
 use tile_grid::*;
 
+// TODO? Some more window management in the future
+const WINDOW_SIZE: (f32, f32) = (1280.0, 720.0);
+
+// TODO: be able to change these at run time.
 const SQUARE_SIZE: f32 = 64.0;
 const SQUARE_SPACING: f32 = 2.0;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, CameraMousePlugin))
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Tile Editor".to_string(),
+                    resolution: WINDOW_SIZE.into(),
+                    ..default()
+                }),
+                ..default()
+            }),
+            CameraMousePlugin,
+        ))
         .init_resource::<MyIconServer>()
         .insert_resource(MainGrid {
             grid: TileGrid::new(6, 4),
         })
-        .add_systems(Startup, setup_grid)
-        .add_systems(
-            PostMouseUpdate,
-            (mark_box_clicked, update_clicked_on).chain(),
-        )
-        .add_systems(Update, bevy::window::close_on_esc)
+        .add_systems(Startup, (setup_grid, setup_pallet))
         .add_systems(
             PreUpdate,
             (icon_server_keyboard_handler, grid_save_load_handler),
         )
+        .add_systems(
+            PostMouseUpdate,
+            (
+                mark_box_clicked,
+                (update_clicked_on_tile, update_clicked_on_pallet),
+            )
+                .chain(),
+        )
+        .add_systems(Update, bevy::window::close_on_esc)
+        .add_systems(Update, update_pallet_highlights)
         .run();
 }
 
@@ -42,15 +61,12 @@ struct MainGrid {
 #[derive(Component, Debug, Clone, Copy)]
 struct TileMarker {
     pos: (usize, usize),
-    // x: usize,
-    // y: usize,
 }
 
 #[derive(Resource)]
 struct MyIconServer {
     selected: usize,
     _asset_folder: Handle<LoadedFolder>, // @Unused: Maybe don't need?
-    // _asset_names: Vec<String>,
     assets: Vec<(String, Handle<Image>)>,
 }
 
@@ -59,6 +75,11 @@ impl MyIconServer {
         return self.assets[self.selected].1.clone();
     }
 
+    fn get_selected_name(&self) -> &str {
+        &self.assets[self.selected].0
+    }
+
+    // TODO: get_by_name, full switch
     fn get_by_id(&self, id: usize) -> Handle<Image> {
         assert!(id < self.assets.len(), "Id is within bounds");
         return self.assets[id].1.clone();
@@ -70,6 +91,16 @@ impl MyIconServer {
 
     fn get_index(&self) -> usize {
         self.selected
+    }
+
+    fn set_by_name(&mut self, name: &str) {
+        for (i, (asset_name, _asset)) in self.assets.iter().enumerate() {
+            if name == asset_name {
+                self.selected = i;
+                return;
+            }
+        }
+        panic!("Cannot set to unknown name: {name}");
     }
 
     fn increase(&mut self) {
@@ -156,7 +187,10 @@ fn grid_save_load_handler(
     if keys.just_pressed(KeyCode::KeyL) {
         info!("Loading Saved Grid!");
 
-        let mut input = File::open(FILE_NAME).expect("File exists");
+        let Ok(mut input) = File::open(FILE_NAME) else {
+            info!("No quick save file");
+            return;
+        };
         let mut buffer = String::new();
         input.read_to_string(&mut buffer).expect("Read to buffer");
 
@@ -171,9 +205,6 @@ fn grid_save_load_handler(
         }
     }
 }
-
-#[derive(Component)]
-struct GridParentMarker;
 
 fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res<MyIconServer>) {
     const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
@@ -220,6 +251,80 @@ fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res
 }
 
 #[derive(Component)]
+struct PalletMarker {
+    name: String,
+}
+
+#[derive(Component)]
+struct ColorHolder {
+    base_color: Color,
+    highlight_color: Color,
+}
+
+fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
+    // TODO: Copy pasta, get a better system for this.
+    const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
+    const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
+
+    // TODO: Set this based on texture scale?
+    const PALLET_COLUMNS: usize = 3;
+
+    const PADDING: f32 = 10.0;
+
+    // TODO? setup_grid should use this method as well?
+    let start_x = (-WINDOW_SIZE.0 / 2.0) + (SQUARE_SIZE / 2.0) + PADDING;
+    let start_y = (WINDOW_SIZE.1 / 2.0) - (SQUARE_SIZE / 2.0) - PADDING;
+
+    let assets = &icon_server.assets;
+
+    for (i, (name, asset)) in assets.iter().enumerate() {
+        let (d, m) = ((i / PALLET_COLUMNS) as f32, (i % PALLET_COLUMNS) as f32);
+        let transform = Transform {
+            translation: Vec3::new(
+                start_x + (m * (SQUARE_SIZE + SQUARE_SPACING)),
+                start_y - (d * (SQUARE_SIZE + SQUARE_SPACING)),
+                1.0,
+            ),
+            scale: TEXTURE_SCALE,
+            ..default()
+        };
+        let base_color = Color::hsl(150.0, 0.7, 0.9);
+        let highlight_color = Color::hsl(50.0, 1.0, 0.55);
+
+        commands.spawn((
+            SpriteBundle {
+                texture: asset.clone(),
+                transform,
+                sprite: Sprite {
+                    color: base_color,
+                    ..default()
+                },
+                ..default()
+            },
+            PalletMarker { name: name.clone() },
+            MouseCollider(transform),
+            ColorHolder {
+                base_color,
+                highlight_color,
+            },
+        ));
+    }
+}
+
+fn update_pallet_highlights(
+    mut query: Query<(&PalletMarker, &ColorHolder, &mut Sprite)>,
+    icon_server: Res<MyIconServer>,
+) {
+    for (PalletMarker { name }, color_holder, mut sprite) in &mut query {
+        if icon_server.get_selected_name() == name {
+            sprite.color = color_holder.highlight_color;
+        } else {
+            sprite.color = color_holder.base_color;
+        }
+    }
+}
+
+#[derive(Component)]
 pub struct ClickedOnMarker;
 
 fn mark_box_clicked(
@@ -233,7 +338,7 @@ fn mark_box_clicked(
         }
     }
 }
-fn update_clicked_on(
+fn update_clicked_on_tile(
     mut query: Query<(&mut Handle<Image>, &TileMarker, Entity), With<ClickedOnMarker>>,
     mut commands: Commands,
     icon_server: Res<MyIconServer>,
@@ -243,6 +348,19 @@ fn update_clicked_on(
         main_grid.grid.set(tile_marker.pos, icon_server.get_index());
 
         *handle = icon_server.get_selected();
+        commands.entity(entity).remove::<ClickedOnMarker>();
+    }
+}
+
+fn update_clicked_on_pallet(
+    mut query: Query<(&PalletMarker, Entity), With<ClickedOnMarker>>,
+    mut commands: Commands,
+    mut icon_server: ResMut<MyIconServer>,
+) {
+    for (PalletMarker { name }, entity) in &mut query {
+        info!("Setting selected to {name}");
+        icon_server.set_by_name(name);
+
         commands.entity(entity).remove::<ClickedOnMarker>();
     }
 }
