@@ -55,7 +55,7 @@ fn main() {
 
 #[derive(Resource)]
 struct MainGrid {
-    grid: TileGrid<usize>,
+    grid: TileGrid<String>, // TODO? Use str
 }
 
 #[derive(Component, Debug, Clone, Copy)]
@@ -65,53 +65,79 @@ struct TileMarker {
 
 #[derive(Resource)]
 struct MyIconServer {
-    selected: usize,
+    selected: String,                    // TODO: use str
     _asset_folder: Handle<LoadedFolder>, // @Unused: Maybe don't need?
     assets: Vec<(String, Handle<Image>)>,
 }
 
 impl MyIconServer {
-    fn get_selected(&self) -> Handle<Image> {
-        return self.assets[self.selected].1.clone();
+    fn get_selected_handle(&self) -> Handle<Image> {
+        return self
+            .assets
+            .iter()
+            .find(|(name, _)| *name == self.selected)
+            .map(|(_, handle)| handle.clone())
+            .expect("self.selected is valid");
     }
 
     fn get_selected_name(&self) -> &str {
-        &self.assets[self.selected].0
+        return &self.selected;
     }
 
-    // TODO: get_by_name, full switch
-    fn get_by_id(&self, id: usize) -> Handle<Image> {
-        assert!(id < self.assets.len(), "Id is within bounds");
-        return self.assets[id].1.clone();
+    fn get_by_name(&self, name: &str) -> Handle<Image> {
+        self.assets
+            .iter()
+            .find(|(asset_name, _)| name == asset_name)
+            .map(|(_, handle)| handle.clone())
+            .expect("Name exists in assets")
     }
 
-    fn get_default(&self) -> Handle<Image> {
+    fn get_default_handle(&self) -> Handle<Image> {
         return self.assets[0].1.clone(); // @Cleanup: Canonize default
     }
 
-    fn get_index(&self) -> usize {
-        self.selected
-    }
-
     fn set_by_name(&mut self, name: &str) {
-        for (i, (asset_name, _asset)) in self.assets.iter().enumerate() {
-            if name == asset_name {
-                self.selected = i;
-                return;
-            }
-        }
-        panic!("Cannot set to unknown name: {name}");
+        assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
+        self.selected = name.to_owned();
     }
 
-    fn increase(&mut self) {
-        self.selected = (self.selected + 1) % self.assets.len();
+    fn cycle_forwards(&mut self) {
+        let mut index = self
+            .assets
+            .iter()
+            .enumerate()
+            .find(|(_, (name, _))| *name == self.selected)
+            .map(|(i, _)| i)
+            .unwrap();
+
+        index = (index + 1) % self.assets.len();
+
+        self.selected = self
+            .assets
+            .get(index)
+            .map(|(name, _)| name.to_owned())
+            .unwrap();
     }
 
-    fn decrease(&mut self) {
-        if self.selected == 0 {
-            self.selected = self.assets.len()
+    fn cycle_backwards(&mut self) {
+        let mut index = self
+            .assets
+            .iter()
+            .enumerate()
+            .find(|(_, (name, _))| *name == self.selected)
+            .map(|(i, _)| i)
+            .unwrap();
+
+        if index == 0 {
+            index = self.assets.len()
         }
-        self.selected = self.selected - 1;
+        index = index - 1;
+
+        self.selected = self
+            .assets
+            .get(index)
+            .map(|(name, _)| name.to_owned())
+            .unwrap();
     }
 }
 
@@ -135,12 +161,15 @@ impl FromWorld for MyIconServer {
             })
             .map(|str| format!("icons/{str}"));
 
-        let handles = names
+        let handles: Vec<(String, Handle<Image>)> = names
             .map(|path| (path.clone(), asset_server.load(path)))
             .collect();
 
         MyIconServer {
-            selected: 1,
+            selected: handles
+                .get(1)
+                .map(|(name, _)| name.to_owned())
+                .expect("More than one element in pallet at startup"),
             _asset_folder: icons,
             assets: handles,
         }
@@ -152,20 +181,20 @@ fn icon_server_keyboard_handler(
     mut icon_server: ResMut<MyIconServer>,
 ) {
     if keys.just_pressed(KeyCode::KeyE) {
-        icon_server.increase()
+        icon_server.cycle_forwards()
     }
     if keys.just_pressed(KeyCode::KeyQ) {
-        icon_server.decrease()
+        icon_server.cycle_backwards()
     }
 }
 
-impl ToAndFromJsonValue for usize {
+impl ToAndFromJsonValue for String {
     fn to_json(&self) -> json::JsonValue {
-        json::from(*self)
+        json::from(self.to_owned())
     }
 
-    fn from_json(json: json::JsonValue) -> Option<usize> {
-        json.as_usize()
+    fn from_json(json: json::JsonValue) -> Option<Self> {
+        json.as_str().and_then(|str| Some(str.to_owned()))
     }
 }
 
@@ -197,10 +226,10 @@ fn grid_save_load_handler(
         main_grid.grid = TileGrid::from_json(json::parse(&buffer).unwrap()).expect("Grid loaded");
 
         for (mut handle, tile) in &mut query {
-            *handle = if let Some(id) = main_grid.grid.get(tile.pos) {
-                icon_server.get_by_id(*id)
+            *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
+                icon_server.get_by_name(name)
             } else {
-                icon_server.get_default()
+                icon_server.get_default_handle()
             };
         }
     }
@@ -230,10 +259,10 @@ fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res
                 ..default()
             };
 
-            let texture = if let Some(id) = main_grid.grid.get((i, j)) {
-                icon_server.get_by_id(*id)
+            let texture = if let Some(name) = main_grid.grid.get((i, j)) {
+                icon_server.get_by_name(name)
             } else {
-                icon_server.get_default()
+                icon_server.get_default_handle()
             };
 
             commands.spawn((
@@ -345,9 +374,11 @@ fn update_clicked_on_tile(
     mut main_grid: ResMut<MainGrid>,
 ) {
     for (mut handle, tile_marker, entity) in &mut query {
-        main_grid.grid.set(tile_marker.pos, icon_server.get_index());
+        main_grid
+            .grid
+            .set(tile_marker.pos, icon_server.get_selected_name().to_owned());
 
-        *handle = icon_server.get_selected();
+        *handle = icon_server.get_selected_handle();
         commands.entity(entity).remove::<ClickedOnMarker>();
     }
 }
