@@ -25,7 +25,6 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- Use sparse grid for saved output
 - Be able to change the default, and make default more obvious
 - Something to add more tiles to the pallet
 - Remove rainbow colors, (but keep a secret toggle?)

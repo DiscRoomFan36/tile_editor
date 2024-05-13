@@ -1,7 +1,4 @@
-use json::{
-    self, object,
-    JsonValue::{self, Null},
-};
+use json::{object, JsonValue};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tile<T> {
@@ -45,49 +42,14 @@ impl<T> TileGrid<T> {
     }
 }
 
-impl<T> ToAndFromJsonValue for TileGrid<T>
-where
-    T: ToAndFromJsonValue,
-{
-    fn to_json(&self) -> JsonValue {
-        let mut json_object = object! {
-            version: "1.0",
-            rows: self.rows,
-            cols: self.cols,
-            list: []
-        };
-
-        // TODO: Maybe use json object and index numbers for storing,
-        // less error prone, and could make sparse grid
-        // eg: list { (0,0): 3, (3,5): 2 }
-        for j in 0..self.cols {
-            for i in 0..self.rows {
-                let to_push = self
-                    .get((i, j))
-                    .as_ref()
-                    .and_then(|value| Some(value.to_json()))
-                    .unwrap_or(Null);
-                let _ = json_object["list"].push(to_push);
-            }
-        }
-
-        return json_object;
-    }
-
-    fn from_json(source: JsonValue) -> Option<Self> {
-        assert_eq!(source["version"], "1.0");
-
-        let mut new_grid: TileGrid<T> = TileGrid::new(
-            source["rows"].as_usize().expect("rows exists"),
-            source["cols"].as_usize().expect("cols exists"),
-        );
-
-        source["list"].members().enumerate().for_each(|(i, val)| {
-            new_grid.tiles[i].item = T::from_json(val.clone());
-        });
-
-        return Some(new_grid);
-    }
+fn index(pos: (usize, usize), size: (usize, usize)) -> usize {
+    let (x, y) = pos;
+    let (rows, cols) = size;
+    assert!(x < cols && y < rows, "check bounds x: {x} y: {y}");
+    // Who would win in a fight? me or this index?
+    // return x + y * rows;
+    // return x * cols + y;
+    return x + y * cols;
 }
 
 pub trait ToAndFromJsonValue
@@ -95,12 +57,65 @@ where
     Self: Sized,
 {
     fn to_json(&self) -> JsonValue;
-    fn from_json(json: JsonValue) -> Option<Self>;
+    fn from_json(json: &JsonValue) -> Option<Self>;
 }
 
-fn index(pos: (usize, usize), size: (usize, usize)) -> usize {
-    let (x, y) = pos;
-    let (rows, cols) = size;
-    assert!(x < rows && y < cols, "check bounds x: {x} y: {y}");
-    return x + y * rows;
+impl<T> ToAndFromJsonValue for TileGrid<T>
+where
+    T: ToAndFromJsonValue,
+{
+    fn to_json(&self) -> JsonValue {
+        let mut json_object = object! {
+            version: "1.0",
+            "rows": self.rows,
+            "cols": self.cols,
+            tiles: {},
+            // list: [],
+        };
+        // why don't i put multiple different representations in here?
+        // make it parse how you want?
+        // Seems too theoretical. who would actually do that?
+        // maybe just the sparse grid and a list of rows?
+
+        for j in 0..self.rows {
+            for i in 0..self.cols {
+                if let Some(to_push) = self
+                    .get((i, j))
+                    .as_ref()
+                    .and_then(|value| Some(value.to_json()))
+                {
+                    // Put space in here? easier to parse without?
+                    let i_by_j = format!("({i},{j})");
+                    json_object["tiles"][i_by_j] = to_push;
+                }
+            }
+        }
+
+        return json_object;
+    }
+
+    fn from_json(source: &JsonValue) -> Option<Self> {
+        assert_eq!(source["version"], "1.0");
+
+        let mut new_grid: TileGrid<T> = TileGrid::new(
+            source["rows"].as_usize().expect("rows exists"),
+            source["cols"].as_usize().expect("cols exists"),
+        );
+
+        source["tiles"].entries().for_each(|(key, value)| {
+            let pos = key[1..key.len() - 1]
+                .split_once(",")
+                .map(|(x, y)| (x.parse().unwrap(), y.parse().unwrap()))
+                .expect("Parse index's correctly");
+
+            new_grid.set(pos, T::from_json(value).expect("Valid Value"))
+        });
+
+        // TODO? reuse as list of rows?
+        // source["list"].members().enumerate().for_each(|(i, val)| {
+        //     new_grid.tiles[i].item = T::from_json(val.clone());
+        // });
+
+        return Some(new_grid);
+    }
 }

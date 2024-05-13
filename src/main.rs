@@ -33,7 +33,7 @@ fn main() {
         ))
         .init_resource::<MyIconServer>()
         .insert_resource(MainGrid {
-            grid: TileGrid::new(6, 4),
+            grid: TileGrid::new(4, 6),
         })
         .add_systems(Startup, (setup_grid, setup_pallet))
         .add_systems(
@@ -193,7 +193,7 @@ impl ToAndFromJsonValue for String {
         json::from(self.to_owned())
     }
 
-    fn from_json(json: json::JsonValue) -> Option<Self> {
+    fn from_json(json: &json::JsonValue) -> Option<Self> {
         json.as_str().and_then(|str| Some(str.to_owned()))
     }
 }
@@ -223,7 +223,7 @@ fn grid_save_load_handler(
         let mut buffer = String::new();
         input.read_to_string(&mut buffer).expect("Read to buffer");
 
-        main_grid.grid = TileGrid::from_json(json::parse(&buffer).unwrap()).expect("Grid loaded");
+        main_grid.grid = TileGrid::from_json(&json::parse(&buffer).unwrap()).expect("Grid loaded");
 
         for (mut handle, tile) in &mut query {
             *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
@@ -244,8 +244,8 @@ fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res
     let grid_width = SQUARE_SIZE * n as f32 + SQUARE_SPACING * n as f32;
     let grid_hight = SQUARE_SIZE * m as f32 + SQUARE_SPACING * m as f32;
 
-    for j in 0..m {
-        for i in 0..n {
+    for j in 0..n {
+        for i in 0..m {
             // Color probably isn't right for what i wanted but it changes there color as well as can be expected
             let color = Color::hsl(360.0 * (i + j * m) as f32 / (n * m) as f32, 0.95, 0.7);
 
@@ -374,6 +374,8 @@ fn update_clicked_on_tile(
     mut main_grid: ResMut<MainGrid>,
 ) {
     for (mut handle, tile_marker, entity) in &mut query {
+        info!("Clicked on tile: {:?}", tile_marker.pos);
+
         main_grid
             .grid
             .set(tile_marker.pos, icon_server.get_selected_name().to_owned());
