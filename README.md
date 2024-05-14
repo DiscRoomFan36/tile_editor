@@ -25,9 +25,10 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- Be able to change the default, and make default more obvious
-- Something to add more tiles to the pallet
+- make default more obvious
 - Remove rainbow colors, (but keep a secret toggle?)
+- Something to add more tiles to the pallet
+- change grid size, (and keep current grid)
 
 ### For small extensions:
 
@@ -35,7 +36,6 @@ $ cargo run
 - Better save paths, (maybe keep the quick-save though)
 - Add Load method that isn't quick-save
 - Make saves pretty-printed, for readability
-- change grid size, (and keep current grid)
 - Make a ui (if bevy ui uses css, im not using bevy ui)
 
 ### Some time in the future:

@@ -35,10 +35,15 @@ fn main() {
         .insert_resource(MainGrid {
             grid: TileGrid::new(4, 6),
         })
+        .add_event::<GridRefreshEvent>()
         .add_systems(Startup, (setup_grid, setup_pallet))
         .add_systems(
             PreUpdate,
-            (icon_server_keyboard_handler, grid_save_load_handler),
+            (
+                icon_server_keyboard_handler,
+                grid_save_load_handler,
+                grid_change_default_handle,
+            ),
         )
         .add_systems(
             PostMouseUpdate,
@@ -49,7 +54,7 @@ fn main() {
                 .chain(),
         )
         .add_systems(Update, bevy::window::close_on_esc)
-        .add_systems(Update, update_pallet_highlights)
+        .add_systems(Update, (update_pallet_highlights, grid_refresh_handler))
         .run();
 }
 
@@ -65,35 +70,36 @@ struct TileMarker {
 
 #[derive(Resource)]
 struct MyIconServer {
-    selected: String,                    // TODO: use str
     _asset_folder: Handle<LoadedFolder>, // @Unused: Maybe don't need?
     assets: Vec<(String, Handle<Image>)>,
+    selected: String,     // TODO: use str
+    default_icon: String, // TODO: use str // TODO: think about weather this should be in the json
 }
 
 impl MyIconServer {
-    fn get_selected_handle(&self) -> Handle<Image> {
-        return self
-            .assets
-            .iter()
-            .find(|(name, _)| *name == self.selected)
-            .map(|(_, handle)| handle.clone())
-            .expect("self.selected is valid");
-    }
-
     fn get_selected_name(&self) -> &str {
         return &self.selected;
     }
 
-    fn get_by_name(&self, name: &str) -> Handle<Image> {
+    fn _get_default_name(&self) -> &str {
+        return &self.default_icon;
+    }
+
+    fn get_by_name(&self, name: &str) -> Option<Handle<Image>> {
         self.assets
             .iter()
             .find(|(asset_name, _)| name == asset_name)
             .map(|(_, handle)| handle.clone())
-            .expect("Name exists in assets")
+    }
+
+    fn get_selected_handle(&self) -> Handle<Image> {
+        self.get_by_name(&self.selected)
+            .expect("self.selected is valid")
     }
 
     fn get_default_handle(&self) -> Handle<Image> {
-        return self.assets[0].1.clone(); // @Cleanup: Canonize default
+        self.get_by_name(&self.default_icon)
+            .expect("self.default_icon is valid")
     }
 
     fn set_by_name(&mut self, name: &str) {
@@ -101,30 +107,27 @@ impl MyIconServer {
         self.selected = name.to_owned();
     }
 
-    fn cycle_forwards(&mut self) {
-        let mut index = self
+    fn next_icon_name_in_cycle(&self, name: &str) -> &str {
+        let index = self
             .assets
             .iter()
             .enumerate()
-            .find(|(_, (name, _))| *name == self.selected)
+            .find(|(_, (asset_name, _))| asset_name == name)
             .map(|(i, _)| i)
             .unwrap();
 
-        index = (index + 1) % self.assets.len();
-
-        self.selected = self
-            .assets
-            .get(index)
-            .map(|(name, _)| name.to_owned())
-            .unwrap();
+        self.assets
+            .get((index + 1) % self.assets.len())
+            .map(|(name, _)| name)
+            .unwrap()
     }
 
-    fn cycle_backwards(&mut self) {
+    fn prev_icon_name_in_cycle(&self, name: &str) -> &str {
         let mut index = self
             .assets
             .iter()
             .enumerate()
-            .find(|(_, (name, _))| *name == self.selected)
+            .find(|(_, (asset_name, _))| asset_name == name)
             .map(|(i, _)| i)
             .unwrap();
 
@@ -133,11 +136,7 @@ impl MyIconServer {
         }
         index = index - 1;
 
-        self.selected = self
-            .assets
-            .get(index)
-            .map(|(name, _)| name.to_owned())
-            .unwrap();
+        self.assets.get(index).map(|(name, _)| name).unwrap()
     }
 }
 
@@ -170,6 +169,10 @@ impl FromWorld for MyIconServer {
                 .get(1)
                 .map(|(name, _)| name.to_owned())
                 .expect("More than one element in pallet at startup"),
+            default_icon: handles
+                .get(0)
+                .map(|(name, _)| name.to_owned())
+                .expect("More than zero elements in pallet at startup"),
             _asset_folder: icons,
             assets: handles,
         }
@@ -181,10 +184,62 @@ fn icon_server_keyboard_handler(
     mut icon_server: ResMut<MyIconServer>,
 ) {
     if keys.just_pressed(KeyCode::KeyE) {
-        icon_server.cycle_forwards()
+        icon_server.selected = icon_server
+            .next_icon_name_in_cycle(&icon_server.selected)
+            .to_owned()
     }
     if keys.just_pressed(KeyCode::KeyQ) {
-        icon_server.cycle_backwards()
+        icon_server.selected = icon_server
+            .prev_icon_name_in_cycle(&icon_server.selected)
+            .to_owned()
+    }
+}
+
+#[derive(Event)]
+pub struct GridRefreshEvent;
+
+fn grid_change_default_handle(
+    keys: Res<input::ButtonInput<KeyCode>>,
+    mut ev_grid_refresh: EventWriter<GridRefreshEvent>,
+    mut icon_server: ResMut<MyIconServer>,
+) {
+    if keys.just_pressed(KeyCode::KeyD) {
+        icon_server.default_icon = icon_server
+            .next_icon_name_in_cycle(&icon_server.default_icon)
+            .to_owned();
+
+        ev_grid_refresh.send(GridRefreshEvent);
+    }
+
+    if keys.just_pressed(KeyCode::KeyA) {
+        icon_server.default_icon = icon_server
+            .prev_icon_name_in_cycle(&icon_server.default_icon)
+            .to_owned();
+
+        ev_grid_refresh.send(GridRefreshEvent);
+    }
+}
+
+fn grid_refresh_handler(
+    mut ev_grid_refresh: EventReader<GridRefreshEvent>,
+    main_grid: Res<MainGrid>,
+    icon_server: Res<MyIconServer>,
+    mut query: Query<(&mut Handle<Image>, &TileMarker)>,
+) {
+    // Only do one refresh,
+
+    if !ev_grid_refresh.is_empty() {
+        ev_grid_refresh.clear();
+
+        // gonna need a different thing for different things? different grid sizes and all that.
+        // maybe always destroy the grid every time its updated? but have a different thing for no size changes?
+        for (mut handle, tile) in &mut query {
+            *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
+                icon_server.get_by_name(name).expect("Tile grid is valid")
+            } else {
+                icon_server.get_default_handle()
+            };
+        }
     }
 }
 
@@ -201,8 +256,7 @@ impl ToAndFromJsonValue for String {
 fn grid_save_load_handler(
     keys: Res<input::ButtonInput<KeyCode>>,
     mut main_grid: ResMut<MainGrid>,
-    mut query: Query<(&mut Handle<Image>, &TileMarker)>,
-    icon_server: Res<MyIconServer>,
+    mut ev_grid_refresh: EventWriter<GridRefreshEvent>,
 ) {
     const FILE_NAME: &str = "quick-save.json";
     if keys.just_pressed(KeyCode::KeyP) {
@@ -225,13 +279,7 @@ fn grid_save_load_handler(
 
         main_grid.grid = TileGrid::from_json(&json::parse(&buffer).unwrap()).expect("Grid loaded");
 
-        for (mut handle, tile) in &mut query {
-            *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
-                icon_server.get_by_name(name)
-            } else {
-                icon_server.get_default_handle()
-            };
-        }
+        ev_grid_refresh.send(GridRefreshEvent);
     }
 }
 
@@ -260,7 +308,7 @@ fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res
             };
 
             let texture = if let Some(name) = main_grid.grid.get((i, j)) {
-                icon_server.get_by_name(name)
+                icon_server.get_by_name(name).expect("grid is valid")
             } else {
                 icon_server.get_default_handle()
             };
@@ -354,7 +402,7 @@ fn update_pallet_highlights(
 }
 
 #[derive(Component)]
-pub struct ClickedOnMarker;
+pub struct ClickedOnMarker; // TODO: Left Right? Middle?
 
 fn mark_box_clicked(
     mut ev_mouse_collision: EventReader<MouseCollisionEvent>,
