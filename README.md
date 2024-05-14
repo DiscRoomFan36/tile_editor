@@ -29,6 +29,7 @@ $ cargo run
 - Remove rainbow colors, (but keep a secret toggle?)
 - Something to add more tiles to the pallet
 - change grid size, (and keep current grid)
+- Add right-clicking to pallet to set default
 
 ### For small extensions:
 
