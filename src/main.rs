@@ -201,6 +201,7 @@ fn icon_server_keyboard_handler(
 fn get_grid_positions(
     size: (usize, usize),
     start: Vec2,
+    xy_scaling: Vec2,
     scale: Vec3,
 ) -> Vec<((usize, usize), Transform)> {
     let (rows, cols) = size;
@@ -210,8 +211,8 @@ fn get_grid_positions(
         for x in 0..cols {
             let transform = Transform {
                 translation: Vec3 {
-                    x: start.x + (x as f32 * (SQUARE_SIZE + SQUARE_SPACING)),
-                    y: start.y + (y as f32 * (SQUARE_SIZE + SQUARE_SPACING)),
+                    x: start.x + (x as f32 * (SQUARE_SIZE + SQUARE_SPACING)) * xy_scaling.x,
+                    y: start.y + (y as f32 * (SQUARE_SIZE + SQUARE_SPACING)) * xy_scaling.y,
                     z: 1.0,
                 },
                 scale,
@@ -238,19 +239,18 @@ fn grid_refresh_handler(
 
         let (rows, cols) = main_grid.grid.size();
 
-        //
-        // "+ SQUARE_SPACING" isn't right here... would have to handle it
-        // differently to get it perfect. Odd even parity @Perfect?
-        //
         let start = Vec2 {
-            x: (((cols - 1) as f32) / 2.0) * -(SQUARE_SIZE + SQUARE_SPACING),
-            y: (((rows - 1) as f32) / 2.0) * -(SQUARE_SIZE + SQUARE_SPACING),
+            x: (((cols - 1) / 2) as f32 * -SQUARE_SPACING)
+                + ((cols - 1) as f32 / 2.0 * -SQUARE_SIZE),
+            y: (((rows - 1) / 2) as f32 * -SQUARE_SPACING)
+                + ((rows - 1) as f32 / 2.0 * -SQUARE_SIZE),
         };
 
         const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
         const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
 
-        let transforms = get_grid_positions((rows, cols), start, TEXTURE_SCALE);
+        let transforms =
+            get_grid_positions((rows, cols), start, Vec2 { x: 1.0, y: 1.0 }, TEXTURE_SCALE);
 
         for ((x, y), transform) in transforms {
             let color = Color::hsl(
@@ -304,6 +304,54 @@ fn grid_refresh_handler(
                 main_grid.old_grid.set(pos, new_tile);
             }
         }
+    }
+}
+
+// @Think: this is pretty similar to the refresh method... maybe theres something you could do there?
+fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
+    // TODO: Copy pasta, get a better system for this.
+    const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
+    const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
+
+    // TODO: Set this based on texture scale?
+    const PALLET_COLUMNS: usize = 3;
+
+    const PADDING: f32 = 10.0;
+
+    let start = Vec2 {
+        x: (-WINDOW_SIZE.0 / 2.0) + (SQUARE_SIZE / 2.0) + PADDING,
+        y: (WINDOW_SIZE.1 / 2.0) - (SQUARE_SIZE / 2.0) - PADDING,
+    };
+
+    let assets = &icon_server.assets;
+    let transforms = get_grid_positions(
+        (assets.len().div_ceil(PALLET_COLUMNS), PALLET_COLUMNS),
+        start,
+        Vec2 { x: 1.0, y: -1.0 },
+        TEXTURE_SCALE,
+    );
+
+    for ((name, asset), (_, transform)) in assets.iter().zip(transforms) {
+        let base_color = Color::hsl(150.0, 0.7, 0.9);
+        let highlight_color = Color::hsl(50.0, 1.0, 0.55);
+
+        commands.spawn((
+            SpriteBundle {
+                texture: asset.clone(),
+                transform,
+                sprite: Sprite {
+                    color: base_color,
+                    ..default()
+                },
+                ..default()
+            },
+            PalletMarker { name: name.clone() },
+            MouseCollider(transform),
+            ColorHolder {
+                base_color,
+                highlight_color,
+            },
+        ));
     }
 }
 
@@ -391,58 +439,6 @@ struct PalletMarker {
 struct ColorHolder {
     base_color: Color,
     highlight_color: Color,
-}
-
-// @Think: this is pretty similar to the refresh method... maybe theres something you could do there?
-fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
-    // TODO: Copy pasta, get a better system for this.
-    const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
-    const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
-
-    // TODO: Set this based on texture scale?
-    const PALLET_COLUMNS: usize = 3;
-
-    const PADDING: f32 = 10.0;
-
-    let start = Vec2 {
-        x: (-WINDOW_SIZE.0 / 2.0) + (SQUARE_SIZE / 2.0) + PADDING,
-        y: (WINDOW_SIZE.1 / 2.0) - (SQUARE_SIZE / 2.0) - PADDING,
-    };
-
-    let assets = &icon_server.assets;
-
-    for (i, (name, asset)) in assets.iter().enumerate() {
-        let (d, m) = ((i / PALLET_COLUMNS) as f32, (i % PALLET_COLUMNS) as f32);
-        let transform = Transform {
-            translation: Vec3::new(
-                start.x + (m * (SQUARE_SIZE + SQUARE_SPACING)),
-                start.y - (d * (SQUARE_SIZE + SQUARE_SPACING)),
-                1.0,
-            ),
-            scale: TEXTURE_SCALE,
-            ..default()
-        };
-        let base_color = Color::hsl(150.0, 0.7, 0.9);
-        let highlight_color = Color::hsl(50.0, 1.0, 0.55);
-
-        commands.spawn((
-            SpriteBundle {
-                texture: asset.clone(),
-                transform,
-                sprite: Sprite {
-                    color: base_color,
-                    ..default()
-                },
-                ..default()
-            },
-            PalletMarker { name: name.clone() },
-            MouseCollider(transform),
-            ColorHolder {
-                base_color,
-                highlight_color,
-            },
-        ));
-    }
 }
 
 fn update_pallet_highlights(
