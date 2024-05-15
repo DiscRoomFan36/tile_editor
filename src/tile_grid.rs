@@ -32,16 +32,16 @@ impl<T> TileGrid<T> {
 
     // important we return reference, T has no restraints
     pub fn get(&self, pos: (usize, usize)) -> &Option<T> {
-        return &self.tiles[index(pos, self.get_size())].item;
+        return &self.tiles[index(pos, self.size())].item;
     }
 
     pub fn set(&mut self, pos: (usize, usize), current: Option<T>) {
-        let index = index(pos, self.get_size());
+        let index = index(pos, self.size());
         self.tiles[index].item = current;
     }
 
     // Returns (rows, cols)
-    pub fn get_size(&self) -> (usize, usize) {
+    pub fn size(&self) -> (usize, usize) {
         return (self.rows, self.cols);
     }
 }

@@ -197,58 +197,84 @@ fn icon_server_keyboard_handler(
     }
 }
 
+// fn get_grid_positions(size: (usize, usize), start: Vec2, scale: Vec3) -> Vec<((usize, usize), Vec3)> {
+fn get_grid_positions(
+    size: (usize, usize),
+    start: Vec2,
+    scale: Vec3,
+) -> Vec<((usize, usize), Transform)> {
+    let (rows, cols) = size;
+
+    let mut transforms = vec![];
+    for y in 0..rows {
+        for x in 0..cols {
+            let transform = Transform {
+                translation: Vec3 {
+                    x: start.x + (x as f32 * (SQUARE_SIZE + SQUARE_SPACING)),
+                    y: start.y + (y as f32 * (SQUARE_SIZE + SQUARE_SPACING)),
+                    z: 1.0,
+                },
+                scale,
+                ..default()
+            };
+
+            transforms.push(((x, y), transform));
+        }
+    }
+
+    transforms
+}
+
 fn grid_refresh_handler(
     mut main_grid: ResMut<MainGrid>,
     icon_server: Res<MyIconServer>,
     mut query: Query<(&mut Handle<Image>, &TileMarker, Entity)>,
     mut commands: Commands,
 ) {
-    if main_grid.grid.get_size() != main_grid.old_grid.get_size() {
+    if main_grid.grid.size() != main_grid.old_grid.size() {
         for (mut _handle, _tile, entity) in &mut query {
             commands.entity(entity).despawn_recursive(); // despawn children if we do that
         }
 
-        // TODO: simplify
+        let (rows, cols) = main_grid.grid.size();
+
+        //
+        // "+ SQUARE_SPACING" isn't right here... would have to handle it
+        // differently to get it perfect. Odd even parity @Perfect?
+        //
+        let start = Vec2 {
+            x: (((cols - 1) as f32) / 2.0) * -(SQUARE_SIZE + SQUARE_SPACING),
+            y: (((rows - 1) as f32) / 2.0) * -(SQUARE_SIZE + SQUARE_SPACING),
+        };
+
         const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
         const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
 
-        let (n, m) = main_grid.grid.get_size();
+        let transforms = get_grid_positions((rows, cols), start, TEXTURE_SCALE);
 
-        let grid_width = SQUARE_SIZE * n as f32 + SQUARE_SPACING * n as f32;
-        let grid_hight = SQUARE_SIZE * m as f32 + SQUARE_SPACING * m as f32;
+        for ((x, y), transform) in transforms {
+            let color = Color::hsl(
+                360.0 * (x + y * cols) as f32 / (rows * cols) as f32,
+                0.95,
+                0.7,
+            );
 
-        for j in 0..n {
-            for i in 0..m {
-                // Color probably isn't right for what i wanted but it changes there color as well as can be expected
-                let color = Color::hsl(360.0 * (i + j * m) as f32 / (n * m) as f32, 0.95, 0.7);
+            let texture = if let Some(name) = main_grid.grid.get((x, y)) {
+                icon_server.get_by_name(name).expect("grid is valid")
+            } else {
+                icon_server.get_default_handle()
+            };
 
-                let transform = Transform {
-                    translation: Vec3::new(
-                        (-grid_width / 2.0) + (i as f32 / n as f32 * grid_width),
-                        (-grid_hight / 2.0) + (j as f32 / m as f32 * grid_hight),
-                        0.0,
-                    ),
-                    scale: TEXTURE_SCALE,
+            commands.spawn((
+                SpriteBundle {
+                    texture,
+                    transform,
+                    sprite: Sprite { color, ..default() },
                     ..default()
-                };
-
-                let texture = if let Some(name) = main_grid.grid.get((i, j)) {
-                    icon_server.get_by_name(name).expect("grid is valid")
-                } else {
-                    icon_server.get_default_handle()
-                };
-
-                commands.spawn((
-                    SpriteBundle {
-                        texture,
-                        transform,
-                        sprite: Sprite { color, ..default() },
-                        ..default()
-                    },
-                    TileMarker { pos: (i, j) },
-                    MouseCollider(transform),
-                ));
-            }
+                },
+                TileMarker { pos: (x, y) },
+                MouseCollider(transform),
+            ));
         }
 
         main_grid.old_grid = main_grid.grid.clone(); // @Think: be smarter? can you be smarter here? would i even be faster?
@@ -333,7 +359,7 @@ fn grid_change_default_handle(
 }
 
 fn grid_change_size(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMut<MainGrid>) {
-    let (cur_rows, cur_cols) = main_grid.grid.get_size();
+    let (cur_rows, cur_cols) = main_grid.grid.size();
 
     if keys.just_pressed(KeyCode::KeyW) {
         main_grid.grid.resize(cur_rows + 1, cur_cols);
@@ -378,9 +404,10 @@ fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
 
     const PADDING: f32 = 10.0;
 
-    // TODO? setup_grid should use this method as well?
-    let start_x = (-WINDOW_SIZE.0 / 2.0) + (SQUARE_SIZE / 2.0) + PADDING;
-    let start_y = (WINDOW_SIZE.1 / 2.0) - (SQUARE_SIZE / 2.0) - PADDING;
+    let start = Vec2 {
+        x: (-WINDOW_SIZE.0 / 2.0) + (SQUARE_SIZE / 2.0) + PADDING,
+        y: (WINDOW_SIZE.1 / 2.0) - (SQUARE_SIZE / 2.0) - PADDING,
+    };
 
     let assets = &icon_server.assets;
 
@@ -388,8 +415,8 @@ fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
         let (d, m) = ((i / PALLET_COLUMNS) as f32, (i % PALLET_COLUMNS) as f32);
         let transform = Transform {
             translation: Vec3::new(
-                start_x + (m * (SQUARE_SIZE + SQUARE_SPACING)),
-                start_y - (d * (SQUARE_SIZE + SQUARE_SPACING)),
+                start.x + (m * (SQUARE_SIZE + SQUARE_SPACING)),
+                start.y - (d * (SQUARE_SIZE + SQUARE_SPACING)),
                 1.0,
             ),
             scale: TEXTURE_SCALE,
