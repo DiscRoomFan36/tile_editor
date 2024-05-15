@@ -35,7 +35,6 @@ impl<T> TileGrid<T> {
         return &self.tiles[index(pos, self.get_size())].item;
     }
 
-    // @Think: Should I accept an option? Only if I have a legitimate use case.
     pub fn set(&mut self, pos: (usize, usize), current: Option<T>) {
         let index = index(pos, self.get_size());
         self.tiles[index].item = current;
