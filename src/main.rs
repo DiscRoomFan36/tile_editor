@@ -43,6 +43,7 @@ fn main() {
                 icon_server_keyboard_handler,
                 grid_save_load_handler,
                 grid_change_default_handle,
+                grid_change_size,
             ),
         )
         .add_systems(
@@ -196,23 +197,6 @@ fn icon_server_keyboard_handler(
     }
 }
 
-fn grid_change_default_handle(
-    keys: Res<input::ButtonInput<KeyCode>>,
-    mut icon_server: ResMut<MyIconServer>,
-) {
-    if keys.just_pressed(KeyCode::KeyD) {
-        icon_server.default_icon = icon_server
-            .next_icon_name_in_cycle(&icon_server.default_icon)
-            .to_owned();
-    }
-
-    if keys.just_pressed(KeyCode::KeyA) {
-        icon_server.default_icon = icon_server
-            .prev_icon_name_in_cycle(&icon_server.default_icon)
-            .to_owned();
-    }
-}
-
 fn grid_refresh_handler(
     mut main_grid: ResMut<MainGrid>,
     icon_server: Res<MyIconServer>,
@@ -290,12 +274,8 @@ fn grid_refresh_handler(
             };
 
             if old_out_of_date {
-                let new_thing = main_grid
-                    .grid
-                    .get(pos)
-                    .clone()
-                    .expect("Cannot change tile back to default"); // @Think: could this happen? Should I allow it?
-                main_grid.old_grid.set(pos, new_thing)
+                let new_tile = main_grid.grid.get(pos).clone();
+                main_grid.old_grid.set(pos, new_tile);
             }
         }
     }
@@ -335,6 +315,47 @@ fn grid_save_load_handler(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid:
     }
 }
 
+fn grid_change_default_handle(
+    keys: Res<input::ButtonInput<KeyCode>>,
+    mut icon_server: ResMut<MyIconServer>,
+) {
+    if keys.just_pressed(KeyCode::KeyX) {
+        icon_server.default_icon = icon_server
+            .next_icon_name_in_cycle(&icon_server.default_icon)
+            .to_owned();
+    }
+
+    if keys.just_pressed(KeyCode::KeyZ) {
+        icon_server.default_icon = icon_server
+            .prev_icon_name_in_cycle(&icon_server.default_icon)
+            .to_owned();
+    }
+}
+
+fn grid_change_size(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMut<MainGrid>) {
+    let (cur_rows, cur_cols) = main_grid.grid.get_size();
+
+    if keys.just_pressed(KeyCode::KeyW) {
+        main_grid.grid.resize(cur_rows + 1, cur_cols);
+    }
+
+    if keys.just_pressed(KeyCode::KeyS) {
+        if cur_rows > 0 {
+            main_grid.grid.resize(cur_rows - 1, cur_cols);
+        }
+    }
+
+    if keys.just_pressed(KeyCode::KeyD) {
+        main_grid.grid.resize(cur_rows, cur_cols + 1);
+    }
+
+    if keys.just_pressed(KeyCode::KeyA) {
+        if cur_cols > 0 {
+            main_grid.grid.resize(cur_rows, cur_cols - 1);
+        }
+    }
+}
+
 #[derive(Component)]
 struct PalletMarker {
     name: String,
@@ -346,6 +367,7 @@ struct ColorHolder {
     highlight_color: Color,
 }
 
+// @Think: this is pretty similar to the refresh method... maybe theres something you could do there?
 fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
     // TODO: Copy pasta, get a better system for this.
     const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
@@ -432,9 +454,10 @@ fn update_clicked_on_tile(
     for (tile_marker, entity) in &mut query {
         info!("Clicked on tile: {:?}", tile_marker.pos);
 
-        main_grid
-            .grid
-            .set(tile_marker.pos, icon_server.get_selected_name().to_owned());
+        main_grid.grid.set(
+            tile_marker.pos,
+            Some(icon_server.get_selected_name().to_owned()),
+        );
 
         commands.entity(entity).remove::<ClickedOnMarker>();
     }

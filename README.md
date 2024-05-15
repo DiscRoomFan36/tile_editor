@@ -25,10 +25,11 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
+- Fix Grid rendering, should start in a corner and not move, much?
+- add some kind of symbol that tells you where (0,0) is.
 - make default more obvious
 - Remove rainbow colors, (but keep a secret toggle?)
 - Something to add more tiles to the pallet
-- change grid size, (and keep current grid)
 - Add right-clicking to pallet to set default
 
 - Update Readme for 1.0

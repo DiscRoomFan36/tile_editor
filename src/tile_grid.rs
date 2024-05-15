@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use json::{object, JsonValue};
 
 #[derive(Debug, Clone, Copy)]
@@ -28,18 +30,40 @@ impl<T> TileGrid<T> {
         return result;
     }
 
+    // important we return reference, T has no restraints
     pub fn get(&self, pos: (usize, usize)) -> &Option<T> {
         return &self.tiles[index(pos, self.get_size())].item;
     }
 
     // @Think: Should I accept an option? Only if I have a legitimate use case.
-    pub fn set(&mut self, pos: (usize, usize), current: T) {
+    pub fn set(&mut self, pos: (usize, usize), current: Option<T>) {
         let index = index(pos, self.get_size());
-        self.tiles[index].item = Some(current);
+        self.tiles[index].item = current;
     }
 
+    // Returns (rows, cols)
     pub fn get_size(&self) -> (usize, usize) {
         return (self.rows, self.cols);
+    }
+}
+impl<T> TileGrid<T>
+where
+    T: Clone,
+{
+    pub fn resize(&mut self, new_rows: usize, new_cols: usize) {
+        let mut new_grid = Self::new(new_rows, new_cols);
+
+        for x in 0..min(self.cols, new_grid.cols) {
+            for y in 0..min(self.rows, new_grid.rows) {
+                let pos = (x, y);
+                let tile = self.get(pos);
+                if tile.is_some() {
+                    new_grid.set(pos, tile.clone())
+                }
+            }
+        }
+
+        *self = new_grid;
     }
 }
 
@@ -109,7 +133,7 @@ where
                 .map(|(x, y)| (x.parse().unwrap(), y.parse().unwrap()))
                 .expect("Parse index's correctly");
 
-            new_grid.set(pos, T::from_json(value).expect("Valid Value"))
+            new_grid.set(pos, Some(T::from_json(value).expect("Valid Value")));
         });
 
         // TODO? reuse as list of rows?
