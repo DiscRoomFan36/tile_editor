@@ -34,9 +34,9 @@ fn main() {
         .init_resource::<MyIconServer>()
         .insert_resource(MainGrid {
             grid: TileGrid::new(4, 6),
+            old_grid: TileGrid::new(0, 0),
         })
-        .add_event::<GridRefreshEvent>()
-        .add_systems(Startup, (setup_grid, setup_pallet))
+        .add_systems(Startup, setup_pallet)
         .add_systems(
             PreUpdate,
             (
@@ -60,7 +60,8 @@ fn main() {
 
 #[derive(Resource)]
 struct MainGrid {
-    grid: TileGrid<String>, // TODO? Use str
+    grid: TileGrid<String>,     // TODO? Use str
+    old_grid: TileGrid<String>, // TODO? Use str
 }
 
 #[derive(Component, Debug, Clone, Copy)]
@@ -92,7 +93,7 @@ impl MyIconServer {
             .map(|(_, handle)| handle.clone())
     }
 
-    fn get_selected_handle(&self) -> Handle<Image> {
+    fn _get_selected_handle(&self) -> Handle<Image> {
         self.get_by_name(&self.selected)
             .expect("self.selected is valid")
     }
@@ -195,50 +196,107 @@ fn icon_server_keyboard_handler(
     }
 }
 
-#[derive(Event)]
-pub struct GridRefreshEvent;
-
 fn grid_change_default_handle(
     keys: Res<input::ButtonInput<KeyCode>>,
-    mut ev_grid_refresh: EventWriter<GridRefreshEvent>,
     mut icon_server: ResMut<MyIconServer>,
 ) {
     if keys.just_pressed(KeyCode::KeyD) {
         icon_server.default_icon = icon_server
             .next_icon_name_in_cycle(&icon_server.default_icon)
             .to_owned();
-
-        ev_grid_refresh.send(GridRefreshEvent);
     }
 
     if keys.just_pressed(KeyCode::KeyA) {
         icon_server.default_icon = icon_server
             .prev_icon_name_in_cycle(&icon_server.default_icon)
             .to_owned();
-
-        ev_grid_refresh.send(GridRefreshEvent);
     }
 }
 
 fn grid_refresh_handler(
-    mut ev_grid_refresh: EventReader<GridRefreshEvent>,
-    main_grid: Res<MainGrid>,
+    mut main_grid: ResMut<MainGrid>,
     icon_server: Res<MyIconServer>,
-    mut query: Query<(&mut Handle<Image>, &TileMarker)>,
+    mut query: Query<(&mut Handle<Image>, &TileMarker, Entity)>,
+    mut commands: Commands,
 ) {
-    // Only do one refresh,
+    if main_grid.grid.get_size() != main_grid.old_grid.get_size() {
+        for (mut _handle, _tile, entity) in &mut query {
+            commands.entity(entity).despawn_recursive(); // despawn children if we do that
+        }
 
-    if !ev_grid_refresh.is_empty() {
-        ev_grid_refresh.clear();
+        // TODO: simplify
+        const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
+        const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
 
-        // gonna need a different thing for different things? different grid sizes and all that.
-        // maybe always destroy the grid every time its updated? but have a different thing for no size changes?
-        for (mut handle, tile) in &mut query {
+        let (n, m) = main_grid.grid.get_size();
+
+        let grid_width = SQUARE_SIZE * n as f32 + SQUARE_SPACING * n as f32;
+        let grid_hight = SQUARE_SIZE * m as f32 + SQUARE_SPACING * m as f32;
+
+        for j in 0..n {
+            for i in 0..m {
+                // Color probably isn't right for what i wanted but it changes there color as well as can be expected
+                let color = Color::hsl(360.0 * (i + j * m) as f32 / (n * m) as f32, 0.95, 0.7);
+
+                let transform = Transform {
+                    translation: Vec3::new(
+                        (-grid_width / 2.0) + (i as f32 / n as f32 * grid_width),
+                        (-grid_hight / 2.0) + (j as f32 / m as f32 * grid_hight),
+                        0.0,
+                    ),
+                    scale: TEXTURE_SCALE,
+                    ..default()
+                };
+
+                let texture = if let Some(name) = main_grid.grid.get((i, j)) {
+                    icon_server.get_by_name(name).expect("grid is valid")
+                } else {
+                    icon_server.get_default_handle()
+                };
+
+                commands.spawn((
+                    SpriteBundle {
+                        texture,
+                        transform,
+                        sprite: Sprite { color, ..default() },
+                        ..default()
+                    },
+                    TileMarker { pos: (i, j) },
+                    MouseCollider(transform),
+                ));
+            }
+        }
+
+        main_grid.old_grid = main_grid.grid.clone(); // @Think: be smarter? can you be smarter here? would i even be faster?
+
+        return; // @think: be smarter? combine the thing below with this?
+    }
+
+    for (mut handle, tile, _entity) in &mut query {
+        let pos = tile.pos;
+
+        let old_out_of_date = main_grid.old_grid.get(pos) != main_grid.grid.get(pos);
+        let default_changed =
+            main_grid.grid.get(pos).is_none() && (*handle != icon_server.get_default_handle());
+
+        // compiler should be smart here, hopefully
+        if old_out_of_date || default_changed {
+            // info!("Updating sprite!");
+
             *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
                 icon_server.get_by_name(name).expect("Tile grid is valid")
             } else {
                 icon_server.get_default_handle()
             };
+
+            if old_out_of_date {
+                let new_thing = main_grid
+                    .grid
+                    .get(pos)
+                    .clone()
+                    .expect("Cannot change tile back to default"); // @Think: could this happen? Should I allow it?
+                main_grid.old_grid.set(pos, new_thing)
+            }
         }
     }
 }
@@ -253,11 +311,7 @@ impl ToAndFromJsonValue for String {
     }
 }
 
-fn grid_save_load_handler(
-    keys: Res<input::ButtonInput<KeyCode>>,
-    mut main_grid: ResMut<MainGrid>,
-    mut ev_grid_refresh: EventWriter<GridRefreshEvent>,
-) {
+fn grid_save_load_handler(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMut<MainGrid>) {
     const FILE_NAME: &str = "quick-save.json";
     if keys.just_pressed(KeyCode::KeyP) {
         info!("Saving Grid!");
@@ -278,52 +332,6 @@ fn grid_save_load_handler(
         input.read_to_string(&mut buffer).expect("Read to buffer");
 
         main_grid.grid = TileGrid::from_json(&json::parse(&buffer).unwrap()).expect("Grid loaded");
-
-        ev_grid_refresh.send(GridRefreshEvent);
-    }
-}
-
-fn setup_grid(main_grid: Res<MainGrid>, mut commands: Commands, icon_server: Res<MyIconServer>) {
-    const SCALED_SQUARE: f32 = SQUARE_SIZE / 32.0; // div by 32 because thats how many pixels wide the image is
-    const TEXTURE_SCALE: Vec3 = Vec3::new(SCALED_SQUARE, SCALED_SQUARE, 1.0);
-
-    let (n, m) = main_grid.grid.get_size();
-
-    let grid_width = SQUARE_SIZE * n as f32 + SQUARE_SPACING * n as f32;
-    let grid_hight = SQUARE_SIZE * m as f32 + SQUARE_SPACING * m as f32;
-
-    for j in 0..n {
-        for i in 0..m {
-            // Color probably isn't right for what i wanted but it changes there color as well as can be expected
-            let color = Color::hsl(360.0 * (i + j * m) as f32 / (n * m) as f32, 0.95, 0.7);
-
-            let transform = Transform {
-                translation: Vec3::new(
-                    (-grid_width / 2.0) + (i as f32 / n as f32 * grid_width),
-                    (-grid_hight / 2.0) + (j as f32 / m as f32 * grid_hight),
-                    0.0,
-                ),
-                scale: TEXTURE_SCALE,
-                ..default()
-            };
-
-            let texture = if let Some(name) = main_grid.grid.get((i, j)) {
-                icon_server.get_by_name(name).expect("grid is valid")
-            } else {
-                icon_server.get_default_handle()
-            };
-
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform,
-                    sprite: Sprite { color, ..default() },
-                    ..default()
-                },
-                TileMarker { pos: (i, j) },
-                MouseCollider(transform),
-            ));
-        }
     }
 }
 
@@ -416,19 +424,18 @@ fn mark_box_clicked(
     }
 }
 fn update_clicked_on_tile(
-    mut query: Query<(&mut Handle<Image>, &TileMarker, Entity), With<ClickedOnMarker>>,
+    mut query: Query<(&TileMarker, Entity), With<ClickedOnMarker>>,
     mut commands: Commands,
     icon_server: Res<MyIconServer>,
     mut main_grid: ResMut<MainGrid>,
 ) {
-    for (mut handle, tile_marker, entity) in &mut query {
+    for (tile_marker, entity) in &mut query {
         info!("Clicked on tile: {:?}", tile_marker.pos);
 
         main_grid
             .grid
             .set(tile_marker.pos, icon_server.get_selected_name().to_owned());
 
-        *handle = icon_server.get_selected_handle();
         commands.entity(entity).remove::<ClickedOnMarker>();
     }
 }
