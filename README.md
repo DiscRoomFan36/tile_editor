@@ -31,6 +31,8 @@ $ cargo run
 - change grid size, (and keep current grid)
 - Add right-clicking to pallet to set default
 
+- Update Readme for 1.0
+
 ### For small extensions:
 
 - Make the editor state part of the saved grid json? (might just be for quick saves)
