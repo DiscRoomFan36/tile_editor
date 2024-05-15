@@ -25,7 +25,6 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- Fix Grid rendering, should start in a corner and not move, much?
 - add some kind of symbol that tells you where (0,0) is.
 - make default more obvious
 - Remove rainbow colors, (but keep a secret toggle?)
