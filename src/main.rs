@@ -226,15 +226,22 @@ fn get_grid_positions(
     transforms
 }
 
+#[derive(Component)]
+struct TextMarker;
+
 fn grid_refresh_handler(
     mut main_grid: ResMut<MainGrid>,
     icon_server: Res<MyIconServer>,
     mut query: Query<(&mut Handle<Image>, &TileMarker, Entity)>,
+    query_text: Query<Entity, With<TextMarker>>,
     mut commands: Commands,
 ) {
     if main_grid.grid.size() != main_grid.old_grid.size() {
         for (mut _handle, _tile, entity) in &mut query {
             commands.entity(entity).despawn_recursive(); // despawn children if we do that
+        }
+        for entity in &query_text {
+            commands.entity(entity).despawn();
         }
 
         let (rows, cols) = main_grid.grid.size();
@@ -278,6 +285,30 @@ fn grid_refresh_handler(
         }
 
         main_grid.old_grid = main_grid.grid.clone(); // @Think: be smarter? can you be smarter here? would i even be faster?
+
+        commands.spawn((
+            Text2dBundle {
+                transform: Transform {
+                    translation: Vec3 {
+                        x: start.x - SQUARE_SIZE,
+                        y: start.y - (SQUARE_SIZE / 1.8),
+                        z: 2.0,
+                    },
+                    ..default()
+                },
+                text: Text::from_section(
+                    "(0, 0)",
+                    TextStyle {
+                        font_size: 20.0,
+                        color: Color::GOLD,
+                        ..default()
+                    },
+                )
+                .with_justify(JustifyText::Center),
+                ..default()
+            },
+            TextMarker,
+        ));
 
         return; // @think: be smarter? combine the thing below with this?
     }
@@ -414,7 +445,7 @@ fn grid_change_size(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMu
     }
 
     if keys.just_pressed(KeyCode::KeyS) {
-        if cur_rows > 0 {
+        if cur_rows > 1 {
             main_grid.grid.resize(cur_rows - 1, cur_cols);
         }
     }
@@ -424,7 +455,7 @@ fn grid_change_size(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMu
     }
 
     if keys.just_pressed(KeyCode::KeyA) {
-        if cur_cols > 0 {
+        if cur_cols > 1 {
             main_grid.grid.resize(cur_rows, cur_cols - 1);
         }
     }

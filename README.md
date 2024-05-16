@@ -25,7 +25,6 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- add some kind of symbol that tells you where (0,0) is.
 - make default more obvious
 - Remove rainbow colors, (but keep a secret toggle?)
 - Something to add more tiles to the pallet
@@ -40,6 +39,7 @@ $ cargo run
 - Add Load method that isn't quick-save
 - Make saves pretty-printed, for readability
 - Make a ui (if bevy ui uses css, im not using bevy ui)
+- More marks at the edges of the grid to mark where a tile is.
 
 ### Some time in the future:
 
