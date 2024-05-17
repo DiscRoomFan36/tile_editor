@@ -18,6 +18,13 @@ const WINDOW_SIZE: (f32, f32) = (1280.0, 720.0);
 const SQUARE_SIZE: f32 = 64.0;
 const SQUARE_SPACING: f32 = 2.0;
 
+// TODO: Load these from a file and do some hot reloading.
+const BASE_TILE_COLOR: Color = Color::hsl(193.0, 0.46, 0.83);
+const DEFAULT_TILE_COLOR: Color = Color::hsl(0.0, 0.53, 0.68);
+
+const BASE_PALLET_COLOR: Color = Color::hsl(150.0, 0.7, 0.9);
+const HIGHLIGHT_PALLET_COLOR: Color = Color::hsl(50.0, 1.0, 0.55);
+
 fn main() {
     App::new()
         .add_plugins((
@@ -65,7 +72,8 @@ struct MainGrid {
     old_grid: TileGrid<String>, // TODO? Use str
 }
 
-#[derive(Component, Debug, Clone, Copy)]
+// @Think: Put all stuff like this into one big struct with the colors
+#[derive(Component)]
 struct TileMarker {
     pos: (usize, usize),
 }
@@ -232,12 +240,18 @@ struct TextMarker;
 fn grid_refresh_handler(
     mut main_grid: ResMut<MainGrid>,
     icon_server: Res<MyIconServer>,
-    mut query: Query<(&mut Handle<Image>, &TileMarker, Entity)>,
+    mut query: Query<(
+        &mut Handle<Image>,
+        &mut Sprite,
+        &ColorHolder,
+        &TileMarker,
+        Entity,
+    )>,
     query_text: Query<Entity, With<TextMarker>>,
     mut commands: Commands,
 ) {
     if main_grid.grid.size() != main_grid.old_grid.size() {
-        for (mut _handle, _tile, entity) in &mut query {
+        for (_, _, _, _, entity) in &mut query {
             commands.entity(entity).despawn_recursive(); // despawn children if we do that
         }
         for entity in &query_text {
@@ -260,15 +274,19 @@ fn grid_refresh_handler(
             get_grid_positions((rows, cols), start, Vec2 { x: 1.0, y: 1.0 }, TEXTURE_SCALE);
 
         for ((x, y), transform) in transforms {
-            let color = Color::hsl(
-                360.0 * (x + y * cols) as f32 / (rows * cols) as f32,
-                0.95,
-                0.7,
-            );
+            // TODO: bring this back in some way
+            // let rainbow_color = Color::hsl(
+            //     360.0 * (x + y * cols) as f32 / (rows * cols) as f32,
+            //     0.95,
+            //     0.7,
+            // );
 
+            let color;
             let texture = if let Some(name) = main_grid.grid.get((x, y)) {
+                color = BASE_TILE_COLOR;
                 icon_server.get_by_name(name).expect("grid is valid")
             } else {
+                color = DEFAULT_TILE_COLOR;
                 icon_server.get_default_handle()
             };
 
@@ -281,10 +299,16 @@ fn grid_refresh_handler(
                 },
                 TileMarker { pos: (x, y) },
                 MouseCollider(transform),
+                ColorHolder {
+                    base_color: BASE_TILE_COLOR,
+                    default_color: DEFAULT_TILE_COLOR,
+                    ..default()
+                },
             ));
         }
 
-        main_grid.old_grid = main_grid.grid.clone(); // @Think: be smarter? can you be smarter here? would i even be faster?
+        // @Think: be smarter? can you be smarter here? would it even be faster?
+        main_grid.old_grid = main_grid.grid.clone();
 
         commands.spawn((
             Text2dBundle {
@@ -313,7 +337,7 @@ fn grid_refresh_handler(
         return; // @think: be smarter? combine the thing below with this?
     }
 
-    for (mut handle, tile, _entity) in &mut query {
+    for (mut handle, mut sprite, color_holder, tile, _entity) in &mut query {
         let pos = tile.pos;
 
         let old_out_of_date = main_grid.old_grid.get(pos) != main_grid.grid.get(pos);
@@ -324,11 +348,17 @@ fn grid_refresh_handler(
         if old_out_of_date || default_changed {
             // info!("Updating sprite!");
 
-            *handle = if let Some(name) = main_grid.grid.get(tile.pos) {
-                icon_server.get_by_name(name).expect("Tile grid is valid")
+            let color;
+            let texture = if let Some(name) = main_grid.grid.get(pos) {
+                color = color_holder.base_color;
+                icon_server.get_by_name(name).expect("grid is valid")
             } else {
+                color = color_holder.default_color;
                 icon_server.get_default_handle()
             };
+
+            *handle = texture;
+            sprite.color = color;
 
             if old_out_of_date {
                 let new_tile = main_grid.grid.get(pos).clone();
@@ -363,15 +393,12 @@ fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
     );
 
     for ((name, asset), (_, transform)) in assets.iter().zip(transforms) {
-        let base_color = Color::hsl(150.0, 0.7, 0.9);
-        let highlight_color = Color::hsl(50.0, 1.0, 0.55);
-
         commands.spawn((
             SpriteBundle {
                 texture: asset.clone(),
                 transform,
                 sprite: Sprite {
-                    color: base_color,
+                    color: BASE_PALLET_COLOR,
                     ..default()
                 },
                 ..default()
@@ -379,8 +406,9 @@ fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
             PalletMarker { name: name.clone() },
             MouseCollider(transform),
             ColorHolder {
-                base_color,
-                highlight_color,
+                base_color: BASE_PALLET_COLOR,
+                highlight_color: HIGHLIGHT_PALLET_COLOR,
+                ..default()
             },
         ));
     }
@@ -466,10 +494,11 @@ struct PalletMarker {
     name: String,
 }
 
-#[derive(Component)]
+#[derive(Component, Default)]
 struct ColorHolder {
     base_color: Color,
     highlight_color: Color,
+    default_color: Color,
 }
 
 fn update_pallet_highlights(

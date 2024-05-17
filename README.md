@@ -25,8 +25,6 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- make default more obvious
-- Remove rainbow colors, (but keep a secret toggle?)
 - Something to add more tiles to the pallet
 - Add right-clicking to pallet to set default
 
