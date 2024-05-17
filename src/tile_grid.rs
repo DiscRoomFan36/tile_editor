@@ -54,10 +54,9 @@ where
 
         for x in 0..min(self.cols, new_grid.cols) {
             for y in 0..min(self.rows, new_grid.rows) {
-                let pos = (x, y);
-                let tile = self.get(pos);
+                let tile = self.get((x, y));
                 if tile.is_some() {
-                    new_grid.set(pos, tile.clone())
+                    new_grid.set((x, y), tile.clone())
                 }
             }
         }
