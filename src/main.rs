@@ -24,7 +24,7 @@ const DEFAULT_TILE_COLOR: Color = Color::hsl(0.0, 0.53, 0.68);
 
 const BASE_PALLET_COLOR: Color = Color::hsl(150.0, 0.7, 0.9);
 const HIGHLIGHT_PALLET_COLOR: Color = Color::hsl(50.0, 1.0, 0.55);
-const DEFAULT_PALLET_COLOR: Color = DEFAULT_TILE_COLOR;
+const DEFAULT_PALLET_COLOR: Color = Color::hsl(0.0, 0.9, 0.4);
 
 fn main() {
     App::new()
