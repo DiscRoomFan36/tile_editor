@@ -88,6 +88,7 @@ fn load_folder(path: &str, asset_server: &AssetServer) -> Vec<(String, Handle<Im
     // path is like "./assets/icons"
     let paths = fs::read_dir(path).expect("Valid directory");
 
+    // TODO: This is gonna break if there are other files in the folder.
     let last_path_name = path.split("/").last().unwrap();
 
     let names = paths
