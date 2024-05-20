@@ -13,8 +13,10 @@ impl Plugin for IconServerPlugin {
 #[derive(Resource)]
 pub struct MyIconServer {
     pub assets: Vec<(String, Handle<Image>)>,
+
+    // @Think about weather these should be in the json
     selected: String,     // TODO: use str
-    default_icon: String, // TODO: use str // @Think about weather this should be in the json
+    default_icon: String, // TODO: use str
 }
 
 impl MyIconServer {
@@ -31,11 +33,6 @@ impl MyIconServer {
             .iter()
             .find(|(asset_name, _)| name == asset_name)
             .map(|(_, handle)| handle.clone())
-    }
-
-    pub fn _get_selected_handle(&self) -> Handle<Image> {
-        self.get_by_name(&self.selected)
-            .expect("self.selected is valid")
     }
 
     pub fn get_default_handle(&self) -> Handle<Image> {
@@ -86,7 +83,7 @@ impl MyIconServer {
     }
 }
 
-// TODO: this is probably broken for paths that are not in the assets folder
+// this dose not work for folders not in the asset folder. must make a folder in assets and put images in it.
 fn load_folder(path: &str, asset_server: &AssetServer) -> Vec<(String, Handle<Image>)> {
     // path is like "./assets/icons"
     let paths = fs::read_dir(path).expect("Valid directory");
@@ -104,28 +101,32 @@ fn load_folder(path: &str, asset_server: &AssetServer) -> Vec<(String, Handle<Im
         })
         .map(|str| format!("{last_path_name}/{str}"));
 
-    let handles: Vec<(String, Handle<Image>)> = names
+    return names
         .map(|path| (path.clone(), asset_server.load(path)))
         .collect();
-
-    return handles;
 }
 
 impl FromWorld for MyIconServer {
     fn from_world(world: &mut World) -> Self {
         let asset_server = world.resource::<AssetServer>();
 
-        let handles = load_folder("./assets/icons", asset_server);
+        // I give up, just load all folders
+        let asset_folder = fs::read_dir("./assets").expect("Assets folder exists");
+
+        let handles: Vec<_> = asset_folder
+            .map(|folder| folder.unwrap())
+            .flat_map(|folder| load_folder(folder.path().to_str().unwrap(), asset_server))
+            .collect();
 
         MyIconServer {
-            selected: handles
-                .get(1)
-                .map(|(name, _)| name.to_owned())
-                .expect("More than one element in pallet at startup"),
             default_icon: handles
                 .get(0)
                 .map(|(name, _)| name.to_owned())
                 .expect("More than zero elements in pallet at startup"),
+            selected: handles
+                .get(1)
+                .map(|(name, _)| name.to_owned())
+                .expect("More than one element in pallet at startup"),
             assets: handles,
         }
     }

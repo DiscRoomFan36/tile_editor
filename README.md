@@ -25,17 +25,20 @@ $ cargo run
 
 ### For basic tile editor (1.0?):
 
-- Something to add more tiles to the pallet
 - Update Readme for 1.0
 
 ### For small extensions:
 
+- Be able to load images of different sizes
+- Be able to change the size of the tiles in editor. (Zoom out with camera?)
 - Make the editor state part of the saved grid json? (might just be for quick saves)
 - Better save paths, (maybe keep the quick-save though)
 - Add Load method that isn't quick-save
 - Make saves pretty-printed, for readability
 - Make a ui (if bevy ui uses css, im not using bevy ui)
 - More marks at the edges of the grid to mark where a tile is.
+- Make the pallet be separated by folders, and stop it from crashing when loading something bad.
+- Make some toggles for the tinting on the sprites in the grid.
 
 ### Some time in the future:
 
