@@ -1,13 +1,15 @@
+mod icon_server;
 mod mouse_stuff;
 mod tile_grid;
 
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{Read, Write},
 };
 
-use bevy::{asset::LoadedFolder, input, prelude::*};
+use bevy::{input, prelude::*};
 
+use icon_server::*;
 use mouse_stuff::*;
 use tile_grid::*;
 
@@ -28,32 +30,21 @@ const DEFAULT_PALLET_COLOR: Color = Color::hsl(0.0, 0.9, 0.4);
 
 fn main() {
     App::new()
-        .add_plugins((
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Tile Editor".to_string(),
-                    resolution: WINDOW_SIZE.into(),
-                    ..default()
-                }),
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Tile Editor".to_string(),
+                resolution: WINDOW_SIZE.into(),
                 ..default()
             }),
-            CameraMousePlugin,
-        ))
-        .init_resource::<MyIconServer>()
+            ..default()
+        }))
+        .add_plugins((CameraMousePlugin, IconServerPlugin))
         .insert_resource(MainGrid {
             grid: TileGrid::new(4, 6),
             old_grid: TileGrid::new(0, 0),
         })
         .add_systems(Startup, setup_pallet)
-        .add_systems(
-            PreUpdate,
-            (
-                icon_server_keyboard_handler,
-                grid_save_load_handler,
-                grid_change_default_handle,
-                grid_change_size,
-            ),
-        )
+        .add_systems(PreUpdate, (grid_save_load_handler, grid_change_size))
         .add_systems(
             PostMouseUpdate,
             (
@@ -79,139 +70,6 @@ struct TileMarker {
     pos: (usize, usize),
 }
 
-#[derive(Resource)]
-struct MyIconServer {
-    _asset_folder: Handle<LoadedFolder>, // @Unused: Maybe don't need?
-    assets: Vec<(String, Handle<Image>)>,
-    selected: String,     // TODO: use str
-    default_icon: String, // TODO: use str // TODO: think about weather this should be in the json
-}
-
-impl MyIconServer {
-    fn get_selected_name(&self) -> &str {
-        return &self.selected;
-    }
-
-    fn get_default_name(&self) -> &str {
-        return &self.default_icon;
-    }
-
-    fn get_by_name(&self, name: &str) -> Option<Handle<Image>> {
-        self.assets
-            .iter()
-            .find(|(asset_name, _)| name == asset_name)
-            .map(|(_, handle)| handle.clone())
-    }
-
-    fn _get_selected_handle(&self) -> Handle<Image> {
-        self.get_by_name(&self.selected)
-            .expect("self.selected is valid")
-    }
-
-    fn get_default_handle(&self) -> Handle<Image> {
-        self.get_by_name(&self.default_icon)
-            .expect("self.default_icon is valid")
-    }
-
-    fn set_selected_by_name(&mut self, name: &str) {
-        assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
-        self.selected = name.to_owned();
-    }
-
-    fn set_default_by_name(&mut self, name: &str) {
-        assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
-        self.default_icon = name.to_owned();
-    }
-
-    fn next_icon_name_in_cycle(&self, name: &str) -> &str {
-        let index = self
-            .assets
-            .iter()
-            .enumerate()
-            .find(|(_, (asset_name, _))| asset_name == name)
-            .map(|(i, _)| i)
-            .unwrap();
-
-        self.assets
-            .get((index + 1) % self.assets.len())
-            .map(|(name, _)| name)
-            .unwrap()
-    }
-
-    fn prev_icon_name_in_cycle(&self, name: &str) -> &str {
-        let mut index = self
-            .assets
-            .iter()
-            .enumerate()
-            .find(|(_, (asset_name, _))| asset_name == name)
-            .map(|(i, _)| i)
-            .unwrap();
-
-        if index == 0 {
-            index = self.assets.len()
-        }
-        index = index - 1;
-
-        self.assets.get(index).map(|(name, _)| name).unwrap()
-    }
-}
-
-impl FromWorld for MyIconServer {
-    fn from_world(world: &mut World) -> Self {
-        let asset_server = world.resource::<AssetServer>();
-
-        let icons = asset_server.load_folder("icons"); // loads all files in parallel
-
-        // hmmm... might need a better way to do this
-        let paths = fs::read_dir("./assets/icons").expect("Icon folder exists");
-
-        let names = paths
-            .map(|path| {
-                path.unwrap()
-                    .path()
-                    .file_name()
-                    .and_then(|p| p.to_str())
-                    .and_then(|p| Some(p.to_string()))
-                    .unwrap()
-            })
-            .map(|str| format!("icons/{str}"));
-
-        let handles: Vec<(String, Handle<Image>)> = names
-            .map(|path| (path.clone(), asset_server.load(path)))
-            .collect();
-
-        MyIconServer {
-            selected: handles
-                .get(1)
-                .map(|(name, _)| name.to_owned())
-                .expect("More than one element in pallet at startup"),
-            default_icon: handles
-                .get(0)
-                .map(|(name, _)| name.to_owned())
-                .expect("More than zero elements in pallet at startup"),
-            _asset_folder: icons,
-            assets: handles,
-        }
-    }
-}
-
-fn icon_server_keyboard_handler(
-    keys: Res<input::ButtonInput<KeyCode>>,
-    mut icon_server: ResMut<MyIconServer>,
-) {
-    if keys.just_pressed(KeyCode::KeyE) {
-        icon_server.selected = icon_server
-            .next_icon_name_in_cycle(&icon_server.selected)
-            .to_owned()
-    }
-    if keys.just_pressed(KeyCode::KeyQ) {
-        icon_server.selected = icon_server
-            .prev_icon_name_in_cycle(&icon_server.selected)
-            .to_owned()
-    }
-}
-
-// fn get_grid_positions(size: (usize, usize), start: Vec2, scale: Vec3) -> Vec<((usize, usize), Vec3)> {
 fn get_grid_positions(
     size: (usize, usize),
     start: Vec2,
@@ -454,23 +312,6 @@ fn grid_save_load_handler(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid:
     }
 }
 
-fn grid_change_default_handle(
-    keys: Res<input::ButtonInput<KeyCode>>,
-    mut icon_server: ResMut<MyIconServer>,
-) {
-    if keys.just_pressed(KeyCode::KeyX) {
-        icon_server.default_icon = icon_server
-            .next_icon_name_in_cycle(&icon_server.default_icon)
-            .to_owned();
-    }
-
-    if keys.just_pressed(KeyCode::KeyZ) {
-        icon_server.default_icon = icon_server
-            .prev_icon_name_in_cycle(&icon_server.default_icon)
-            .to_owned();
-    }
-}
-
 fn grid_change_size(keys: Res<input::ButtonInput<KeyCode>>, mut main_grid: ResMut<MainGrid>) {
     let (cur_rows, cur_cols) = main_grid.grid.size();
 
@@ -550,6 +391,7 @@ fn mark_box_clicked(
         }
     }
 }
+
 fn update_clicked_on_tile(
     mut query: Query<(&TileMarker, &ClickedOnMarker, Entity)>,
     mut commands: Commands,
