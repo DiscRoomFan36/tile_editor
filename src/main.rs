@@ -24,6 +24,7 @@ const DEFAULT_TILE_COLOR: Color = Color::hsl(0.0, 0.53, 0.68);
 
 const BASE_PALLET_COLOR: Color = Color::hsl(150.0, 0.7, 0.9);
 const HIGHLIGHT_PALLET_COLOR: Color = Color::hsl(50.0, 1.0, 0.55);
+const DEFAULT_PALLET_COLOR: Color = DEFAULT_TILE_COLOR;
 
 fn main() {
     App::new()
@@ -91,7 +92,7 @@ impl MyIconServer {
         return &self.selected;
     }
 
-    fn _get_default_name(&self) -> &str {
+    fn get_default_name(&self) -> &str {
         return &self.default_icon;
     }
 
@@ -408,7 +409,7 @@ fn setup_pallet(icon_server: Res<MyIconServer>, mut commands: Commands) {
             ColorHolder {
                 base_color: BASE_PALLET_COLOR,
                 highlight_color: HIGHLIGHT_PALLET_COLOR,
-                ..default()
+                default_color: DEFAULT_PALLET_COLOR,
             },
         ));
     }
@@ -506,11 +507,20 @@ fn update_pallet_highlights(
     icon_server: Res<MyIconServer>,
 ) {
     for (PalletMarker { name }, color_holder, mut sprite) in &mut query {
-        if icon_server.get_selected_name() == name {
-            sprite.color = color_holder.highlight_color;
+        let mut pallet_color = if icon_server.get_selected_name() == name {
+            color_holder.highlight_color
         } else {
-            sprite.color = color_holder.base_color;
+            color_holder.base_color
+        };
+
+        if icon_server.get_default_name() == name {
+            // good enough?
+            pallet_color = Color::rgb_from_array(
+                (pallet_color.rgb_to_vec3() + DEFAULT_PALLET_COLOR.rgb_to_vec3()) / 2.0,
+            );
         }
+
+        sprite.color = pallet_color;
     }
 }
 
