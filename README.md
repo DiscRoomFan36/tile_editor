@@ -26,8 +26,6 @@ $ cargo run
 ### For basic tile editor (1.0?):
 
 - Something to add more tiles to the pallet
-- Add right-clicking to pallet to set default
-
 - Update Readme for 1.0
 
 ### For small extensions:

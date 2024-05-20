@@ -113,9 +113,14 @@ impl MyIconServer {
             .expect("self.default_icon is valid")
     }
 
-    fn set_by_name(&mut self, name: &str) {
+    fn set_selected_by_name(&mut self, name: &str) {
         assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
         self.selected = name.to_owned();
+    }
+
+    fn set_default_by_name(&mut self, name: &str) {
+        assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
+        self.default_icon = name.to_owned();
     }
 
     fn next_icon_name_in_cycle(&self, name: &str) -> &str {
@@ -525,7 +530,7 @@ fn update_pallet_highlights(
 }
 
 #[derive(Component)]
-pub struct ClickedOnMarker; // TODO: Left Right? Middle?
+pub struct ClickedOnMarker(MouseButton); // TODO: Left Right? Middle?
 
 fn mark_box_clicked(
     mut ev_mouse_collision: EventReader<MouseCollisionEvent>,
@@ -534,36 +539,59 @@ fn mark_box_clicked(
 ) {
     for MouseCollisionEvent(entity) in ev_mouse_collision.read() {
         if buttons.just_pressed(MouseButton::Left) {
-            commands.entity(*entity).insert(ClickedOnMarker);
+            commands
+                .entity(*entity)
+                .insert(ClickedOnMarker(MouseButton::Left));
+        }
+        if buttons.just_pressed(MouseButton::Right) {
+            commands
+                .entity(*entity)
+                .insert(ClickedOnMarker(MouseButton::Right));
         }
     }
 }
 fn update_clicked_on_tile(
-    mut query: Query<(&TileMarker, Entity), With<ClickedOnMarker>>,
+    mut query: Query<(&TileMarker, &ClickedOnMarker, Entity)>,
     mut commands: Commands,
     icon_server: Res<MyIconServer>,
     mut main_grid: ResMut<MainGrid>,
 ) {
-    for (tile_marker, entity) in &mut query {
-        info!("Clicked on tile: {:?}", tile_marker.pos);
+    for (TileMarker { pos }, ClickedOnMarker(button), entity) in &mut query {
+        info!("Clicked on tile: {:?}, {:?}", pos, button);
 
-        main_grid.grid.set(
-            tile_marker.pos,
-            Some(icon_server.get_selected_name().to_owned()),
-        );
+        match button {
+            MouseButton::Left => {
+                main_grid
+                    .grid
+                    .set(*pos, Some(icon_server.get_selected_name().to_owned()));
+            }
+            MouseButton::Right => {
+                main_grid.grid.set(*pos, None);
+            }
+            _ => panic!("Do not expect other buttons"),
+        }
 
         commands.entity(entity).remove::<ClickedOnMarker>();
     }
 }
 
 fn update_clicked_on_pallet(
-    mut query: Query<(&PalletMarker, Entity), With<ClickedOnMarker>>,
+    mut query: Query<(&PalletMarker, &ClickedOnMarker, Entity)>,
     mut commands: Commands,
     mut icon_server: ResMut<MyIconServer>,
 ) {
-    for (PalletMarker { name }, entity) in &mut query {
-        info!("Setting selected to {name}");
-        icon_server.set_by_name(name);
+    for (PalletMarker { name }, ClickedOnMarker(button), entity) in &mut query {
+        info!("Setting pallet to {name}, {button:?}");
+
+        match button {
+            MouseButton::Left => {
+                icon_server.set_selected_by_name(name);
+            }
+            MouseButton::Right => {
+                icon_server.set_default_by_name(name);
+            }
+            _ => panic!("Do not expect other buttons"),
+        }
 
         commands.entity(entity).remove::<ClickedOnMarker>();
     }
