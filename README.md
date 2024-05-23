@@ -6,12 +6,11 @@ The "Ethos" of this project, is that you make your tile edited thing in this pro
 
 If you need a more compressed format, make a build pipeline.
 
-## How to use
+# I have decided to not use Bevy as a tile editor
 
-- Left click on a tile toc change it to the current tile selected
-- Q/E to change tile selected
-- P to Quick-save the grid
-- L to Quick-load the grid
+Probably should have known, ECS probably isn't that good for a gui application, but the main reason is: I want to be able to put some pixels on the screen. I think the next thing I'll do is see what window tools rust has, if all else fails, switch to raylib lol.
+
+the todo's with bevy always seem to get bigger.
 
 ## Quick Start
 
@@ -21,11 +20,26 @@ Probably not so quick, gotta build bevy in release
 $ cargo run
 ```
 
+## How to use
+
+- Left click on a tile toc change it to the current tile selected
+- Q/E to change tile selected
+- P to Quick-save the grid
+- L to Quick-load the grid
+- W/S to resize the grid by rows
+- A/D to resize the grid by cols
+
+## How to add more images
+
+simply put a folder full of images in the assets folder. (warning: has a rigid structure right now, so if theres a bad file it will crash.)
+
+images should be 32 by 32 for scale reasons
+
+## Why is this 1.0?
+
+Because I want to train my version-ing skills. Also it technically works, The best kind of works.
+
 ## TODO's
-
-### For basic tile editor (1.0?):
-
-- Update Readme for 1.0
 
 ### For small extensions:
 
