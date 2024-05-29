@@ -25,6 +25,7 @@ $ cargo run
 
 ### For small extensions:
 
+- Be Able to add new icons to tile_editor
 - Be able to change the size of the tiles in editor. (Zoom out with camera?)
 - Make the editor state part of the saved grid json? (might just be for quick saves)
 - Better save paths, (maybe keep the quick-save though)

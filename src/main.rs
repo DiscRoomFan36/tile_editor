@@ -178,7 +178,7 @@ fn main() {
             }
     
             let image_container = if let Some(name) = grid.get((x, y)) {
-                icon_server.get_by_name(name).unwrap()
+                icon_server.get_by_name(name).expect("Name exist in icon server")
             } else {
                 icon_server.get_default_handle()
             };
