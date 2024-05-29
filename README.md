@@ -1,4 +1,4 @@
-# Bevy Tile Editor
+# Tile Editor
 
 Just a Tile Editor, after I get down the basics, (see [todo's](#todos)), want to add extra features that I would want in a tile editor, (adding notes to tiles on the grid, adding notes to the tiles themselves, ect)
 
