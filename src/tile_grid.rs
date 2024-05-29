@@ -4,7 +4,6 @@ use json::{object, JsonValue};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tile<T> {
-    _id: usize, // @Cleanup: Unneeded
     item: Option<T>,
 }
 
@@ -23,8 +22,8 @@ impl<T> TileGrid<T> {
             tiles: Vec::with_capacity(rows * cols),
         };
 
-        for i in 0..rows * cols {
-            result.tiles.push(Tile { _id: i, item: None });
+        for _ in 0..rows * cols {
+            result.tiles.push(Tile { item: None });
         }
 
         return result;

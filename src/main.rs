@@ -10,15 +10,13 @@ use std::io::{Read, Write};
 use raylib::prelude::*;
 use raylib::consts::{KeyboardKey, MouseButton};
 
-const SQUARE_SIZE: f32 = 64.0;
-const SQUARE_SPACING: f32 = 10.0;
+const SQUARE_SIZE       : f32 = 64.0;
+const SQUARE_SPACING    : f32 = 10.0;
+const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
 
-const HIGHLIGHT_PADDING: f32 = 5.0;
-
-const HIGHLIGHT_COLOR: Color = Color::ORANGE;
-
-const PALLET_SELECTED_COLOR: Color = Color::RED;
-const PALLET_DEFAULT_COLOR: Color = Color::BLUE;
+const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
+const PALLET_SELECTED_COLOR : Color = Color::RED;
+const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
 
 const PATH: &str = "./assets/icons";
 
@@ -29,15 +27,15 @@ struct ImageContainer {
 
 fn main() {
     let assets = get_images_from_path(PATH)
-        .drain(..)
+        .into_iter()
         .map(|(s, image)|
             (s, ImageContainer { image, texture: None }
         ))
-        .collect::<Vec<_>>();
+        .collect();
 
     let mut icon_server = MyIconServer::new(assets);
 
-    let mut grid: TileGrid<String> = TileGrid::new(4, 6);
+    let mut grid = TileGrid::new(4, 6);
 
     // TODO: be smarter with this
     let start_pos = Vector2::new(100.0, 100.0);
@@ -57,17 +55,17 @@ fn main() {
 
         /* -------------------- KEY EVENT HANDLERS -------------------- */
     
-        // QUICK (SAVE / LOAD) Handler
+        // Quick (Save / Load) Handler
         const QUICK_SAVE_FILE: &str = "quick-save.json";
         if rl.is_key_pressed(KeyboardKey::KEY_P) {
-            println!("Saving Grid!");
+            println!("Saving Grid!"); // TODO: draw something to the screen
 
             let json_string = grid.to_json().to_string();
             let mut output = fs::File::create(QUICK_SAVE_FILE).expect("File was created");
             write!(output, "{}", json_string).expect("Write to file");
         }
         if rl.is_key_pressed(KeyboardKey::KEY_L) {
-            println!("Loading Saved Grid!");
+            println!("Loading Saved Grid!"); // TODO: draw something to the screen
 
             if let Ok(mut input) = fs::File::open(QUICK_SAVE_FILE) {
                 let mut buffer = String::new();
@@ -124,10 +122,7 @@ fn main() {
             /* -------------------- ON HOVER PALLET -------------------- */
             if rec.check_collision_point_rec(mouse_pos) {
                 // draw some highlighting around the hovered rectangle
-                d.draw_rectangle_rec(
-                    pad_rectangle(rec, HIGHLIGHT_PADDING),
-                    HIGHLIGHT_COLOR
-                );
+                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
 
                 if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                     icon_server.set_selected_by_name(&name);
@@ -151,7 +146,10 @@ fn main() {
 
             let (_, image_container) = &icon_server.assets[i];
 
-            d.draw_texture(image_container.texture.as_ref().unwrap(), rec.x as i32, rec.y as i32, Color::WHITE);
+            d.draw_texture(
+                image_container.texture.as_ref().unwrap(),
+                rec.x as i32, rec.y as i32, Color::WHITE
+            );
         }
 
 
@@ -164,10 +162,7 @@ fn main() {
             /* -------------------- ON HOVER GRID -------------------- */
             if rec.check_collision_point_rec(mouse_pos) {
                 // draw some highlighting around the hovered rectangle
-                d.draw_rectangle_rec(
-                    pad_rectangle(rec, HIGHLIGHT_PADDING),
-                    HIGHLIGHT_COLOR
-                );
+                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
     
                 if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                     grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
@@ -183,7 +178,10 @@ fn main() {
                 icon_server.get_default_handle()
             };
     
-            d.draw_texture(image_container.texture.as_ref().unwrap(), rec.x as i32, rec.y as i32, Color::WHITE);
+            d.draw_texture(
+                image_container.texture.as_ref().unwrap(),
+                rec.x as i32, rec.y as i32, Color::WHITE
+            );
         }
     }
 }
@@ -219,21 +217,19 @@ impl ToAndFromJsonValue for String {
 fn get_images_from_path(path: &str) -> Vec<(String, Image)> {
     let paths = fs::read_dir(path).expect("Valid directory");
 
-    let names = paths
+    let names: Vec<_> = paths
         .map(|path| path.unwrap())
-        .map(|path| {
-            path.path()
-                .file_name()
-                .and_then(|p| p.to_str())
-                .and_then(|p| Some(p.to_string()))
-                .unwrap()
-        })
-        .map(|file| format!("{PATH}/{file}"));
-    
-    names
-        .map(|name| (
-            name.clone(),
-            raylib::texture::Image::load_image(&name).expect("Image exists")
+        .map(|path|
+            path.path().to_str().expect("Valid path").to_string()
         )
-        ).collect()
+        .collect();
+    
+    let images: Vec<_> = names
+        .iter()
+        .map(|path|
+            raylib::texture::Image::load_image(&path).expect("Is Valid Image")
+        )
+        .collect();
+
+    return names.into_iter().zip(images).collect();
 }
