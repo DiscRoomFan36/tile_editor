@@ -32,11 +32,11 @@ impl<T> TileGrid<T> {
 
     // important we return reference, T has no restraints
     pub fn get(&self, pos: (usize, usize)) -> &Option<T> {
-        return &self.tiles[index(pos, self.size())].item;
+        return &self.tiles[pos_to_index(pos, self.size())].item;
     }
 
     pub fn set(&mut self, pos: (usize, usize), current: Option<T>) {
-        let index = index(pos, self.size());
+        let index = pos_to_index(pos, self.size());
         self.tiles[index].item = current;
     }
 
@@ -65,7 +65,7 @@ where
     }
 }
 
-fn index(pos: (usize, usize), size: (usize, usize)) -> usize {
+pub fn pos_to_index(pos: (usize, usize), size: (usize, usize)) -> usize {
     let (x, y) = pos;
     let (rows, cols) = size;
     assert!(x < cols && y < rows, "check bounds x: {x} y: {y}");
@@ -73,6 +73,17 @@ fn index(pos: (usize, usize), size: (usize, usize)) -> usize {
     // return x + y * rows;
     // return x * cols + y;
     return x + y * cols;
+}
+
+pub fn index_to_pos(index: usize, size: (usize, usize)) -> (usize, usize) {
+    let (rows, cols) = size;
+    assert!(index < rows * cols, "check bounds index: {index}");
+
+    let pos = (index % cols, index / cols);
+
+    assert!(pos_to_index(pos, size) == index, "check index: {index} -> {pos:?}");
+    
+    return pos;
 }
 
 pub trait ToAndFromJsonValue
