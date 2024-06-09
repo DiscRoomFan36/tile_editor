@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use raylib::prelude::*;
 use raylib::consts::{KeyboardKey, MouseButton};
 
+const WINDOW_WIDTH: i32 = 800;
+const WINDOW_HEIGHT: i32 = 600;
+
 const SQUARE_SIZE       : f32 = 64.0;
 const SQUARE_SPACING    : f32 = 10.0;
 const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
@@ -24,6 +27,8 @@ const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
 const PALLET_SELECTED_COLOR : Color = Color::RED;
 const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
 
+const FILE_DIALOG_START_POSITION: Vector2 = Vector2 { x: 100.0, y: 100.0 };
+
 // TODO: Remove hardcode
 const PATH: &str = "./assets/icons";
 
@@ -34,11 +39,8 @@ struct ImageContainer {
 
 struct FileDialogContext {
     is_open: bool,
-    
     current_path: PathBuf,
-    
     width: i32,
-
     menu_position: Vector2,
     is_dragging: bool,
     menu_started_dragging_position: Vector2,
@@ -55,7 +57,7 @@ fn main() {
     let start_pos = Vector2::new(100.0, 100.0);
 
     let (mut rl, thread) = raylib::init()
-        .size(800, 600)
+        .size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .title("Tile Editor")
         .build();
     
@@ -65,7 +67,7 @@ fn main() {
         is_open: false,
         current_path: ".".into(),
         width: rl.measure_text(SELECT_FOLDER_TEXT, TEXT_SIZE) + TEXT_PADDING * 2,
-        menu_position: Vector2::new(20.0, 20.0),
+        menu_position: FILE_DIALOG_START_POSITION,
         is_dragging: false,
         menu_started_dragging_position: Vector2::zero(),
     };
@@ -115,10 +117,105 @@ fn main() {
             if rl.is_key_pressed(KeyboardKey::KEY_Z) { icon_server.cycle_default (-1) }
         }
 
-        // File dialog
-        if rl.is_key_pressed(KeyboardKey::KEY_O) { file_dialog_context.is_open = !file_dialog_context.is_open; }
+        { // File dialog
+            if rl.is_key_pressed(KeyboardKey::KEY_O) {
+                file_dialog_context.is_open = !file_dialog_context.is_open;
+                file_dialog_context.is_dragging = false;
 
-        let mouse_pos = rl.get_mouse_position();
+                if file_dialog_context.menu_position.x > WINDOW_WIDTH  as f32 || file_dialog_context.menu_position.x < 0.0
+                || file_dialog_context.menu_position.y > WINDOW_HEIGHT as f32 || file_dialog_context.menu_position.y < 0.0 {
+                    file_dialog_context.menu_position = FILE_DIALOG_START_POSITION;
+                }
+            }
+        }
+
+        /* -------------------- MOUSE EVENT HANDLERS -------------------- */
+        // TODO: consolidate these into a context
+        let mouse_pos   = rl.get_mouse_position();
+        let mouse_delta = rl.get_mouse_delta();
+
+        /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
+        if file_dialog_context.is_open {
+            let mut xx = file_dialog_context.menu_position.x as i32;
+            let mut yy = file_dialog_context.menu_position.y as i32;
+
+            let file_names = list_directory(&file_dialog_context.current_path);
+
+            // Handle dragging
+            let handle_rec = Rectangle {
+                x: xx as f32, y: yy as f32,
+                width: file_dialog_context.width as f32,
+                height: TEXT_SIZE as f32,
+            };
+            if handle_rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                file_dialog_context.is_dragging = true;
+                file_dialog_context.menu_started_dragging_position = mouse_pos;
+            }
+
+            if file_dialog_context.is_dragging {
+                file_dialog_context.menu_position += mouse_delta;
+                if rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+                    file_dialog_context.is_dragging = false;
+                }
+            }
+
+            yy += TEXT_SIZE; // for current folder text
+            
+            xx += TEXT_PADDING; // indent for text
+            yy += TEXT_PADDING; // indent for backing padding
+
+            let mut refile = false;
+            for file in &file_names {
+
+                let rec = Rectangle {
+                    x: xx as f32, y: yy as f32,
+                    width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+                    height: TEXT_SIZE as f32
+                };
+
+                if rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                    assert!(!refile);
+                    refile = true;
+                    
+                    let p = file_dialog_context.current_path.join(&file);
+
+                    assert!(p.exists());
+                    assert!(p.is_dir(), "Can only click on directories"); // TODO
+
+                    // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
+                    file_dialog_context.current_path.push(&file);
+                }
+                yy += TEXT_SIZE;
+            }
+            yy += TEXT_PADDING;
+            
+            // TODO: Only do this when changing path, but also on first open
+            // check if we need to make the width bigger
+            let width = file_names
+                .iter()
+                .chain([file_dialog_context.current_path.to_str().unwrap().to_string()].iter())
+                .map(|file| rl.measure_text(&file, TEXT_SIZE))
+                .max()
+                .unwrap_or_default()
+                + TEXT_PADDING * 2;
+            if width > file_dialog_context.width { file_dialog_context.width = width; }
+
+            // Handle Select Folder Button
+            let select_folder_rec = Rectangle {
+                x: xx as f32,
+                y: (yy + TEXT_PADDING) as f32,
+                width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+                height: TEXT_SIZE as f32
+            };
+            // TODO: Factor out that d.is_mouse_button_pressed, to some struct that holds all the button states
+            if select_folder_rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                // TODO: This could add duplicates, get icon_server to dedup?
+                icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
+                textures_dirty = true; // Remember to call when adding images
+
+                file_dialog_context.is_open = false; // Close it because we done here
+            }
+        }
 
 
         /* -------------------- LOAD TEXTURES -------------------- */
@@ -215,95 +312,10 @@ fn main() {
         // TODO: Make sure things below this cannot be touched
         /* -------------------- FILE DIALOG -------------------- */
         if file_dialog_context.is_open {
-            let mut xx = file_dialog_context.menu_position.x as i32;
+            let xx = file_dialog_context.menu_position.x as i32;
             let mut yy = file_dialog_context.menu_position.y as i32;
 
-            let mut file_names = list_directory(&file_dialog_context.current_path);
-
-            // TODO: Move up, near input section, consolidate
-            { /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
-                // Handle dragging
-                let handle_rec = Rectangle {
-                    x: xx as f32, y: yy as f32,
-                    width: file_dialog_context.width as f32,
-                    height: TEXT_SIZE as f32,
-                };
-                if handle_rec.check_collision_point_rec(mouse_pos) && d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    file_dialog_context.is_dragging = true;
-                    file_dialog_context.menu_started_dragging_position = mouse_pos;
-                }
-
-                if file_dialog_context.is_dragging {
-                    let diff = mouse_pos - file_dialog_context.menu_started_dragging_position;
-                    xx += diff.x as i32;
-                    yy += diff.y as i32;
-
-                    if d.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
-                        file_dialog_context.menu_position += diff;
-                        file_dialog_context.is_dragging = false;
-                    }
-                }
-
-                let mut xx = xx;
-                let mut yy = yy;
-
-                yy += TEXT_SIZE; // for current folder text
-                
-                xx += TEXT_PADDING; // indent for text
-                yy += TEXT_PADDING; // indent for backing padding
-
-                let mut refile = false;
-                for file in &file_names {
-
-                    let rec = Rectangle {
-                        x: xx as f32, y: yy as f32,
-                        width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
-                        height: TEXT_SIZE as f32
-                    };
-
-                    if rec.check_collision_point_rec(mouse_pos) && d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                        assert!(!refile);
-                        refile = true;
-                        
-                        let p = file_dialog_context.current_path.join(&file);
-
-                        assert!(p.exists());
-                        assert!(p.is_dir(), "Can only click on directories"); // TODO
-
-                        // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
-                        file_dialog_context.current_path.push(&file);
-                    }
-                    yy += TEXT_SIZE;
-                }
-                yy += TEXT_PADDING;
-                
-                if refile { file_names = list_directory(&file_dialog_context.current_path); }
-
-                // check if we need to make the width bigger
-                let width = file_names
-                    .iter()
-                    .chain([file_dialog_context.current_path.to_str().unwrap().to_string()].iter())
-                    .map(|file| d.measure_text(&file, TEXT_SIZE))
-                    .max()
-                    .unwrap_or_default()
-                    + TEXT_PADDING * 2;
-                if width > file_dialog_context.width { file_dialog_context.width = width; }
-
-                // Handle Select Folder Button
-                let select_folder_rec = Rectangle {
-                    x: xx as f32,
-                    y: (yy + TEXT_PADDING) as f32,
-                    width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
-                    height: TEXT_SIZE as f32
-                };
-                // TODO: Factor out that d.is_mouse_button_pressed, to some struct that holds all the button states
-                if select_folder_rec.check_collision_point_rec(mouse_pos) && d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
-                    textures_dirty = true; // Remember to call when
-
-                    file_dialog_context.is_open = false; // Close it because we done here
-                }
-            }
+            let file_names = list_directory(&file_dialog_context.current_path);
 
             { // Draw current folder
                 const FILE_DIALOG_CURRENT_FOLDER_COLOR: Color = Color::MAROON;
@@ -321,7 +333,7 @@ fn main() {
                 d.draw_rectangle(xx, yy, file_dialog_context.width, total_file_names_height, FILE_DIALOG_BACKING_BOX_COLOR);
             }
 
-            { /* -------------------- DRAW LABELS -------------------- */
+            { // Draw Labels
                 const FILE_DIALOG_LABEL_HOVER_COLOR: Color = Color::ORANGE;
                 const FILE_DIALOG_LABEL_TEXT_COLOR: Color = Color::GOLD;
 
