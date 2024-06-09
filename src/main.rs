@@ -15,6 +15,11 @@ const SQUARE_SIZE       : f32 = 64.0;
 const SQUARE_SPACING    : f32 = 10.0;
 const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
 
+const TEXT_SIZE: i32 = 30;
+const TEXT_PADDING: i32 = 10;
+
+const SELECT_FOLDER_TEXT: &str = "Select Folder";
+
 const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
 const PALLET_SELECTED_COLOR : Color = Color::RED;
 const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
@@ -28,19 +33,19 @@ struct ImageContainer {
 }
 
 struct FileDialogContext {
-    current_path: PathBuf,
-    menu_position: Vector2,
     is_open: bool,
+    
+    current_path: PathBuf,
+    
     width: i32,
+
+    menu_position: Vector2,
+    is_dragging: bool,
+    menu_started_dragging_position: Vector2,
 }
 
 fn main() {
-    let assets = get_images_from_path(PATH)
-        .into_iter()
-        .map(|(s, image)|
-            (s, ImageContainer { image, texture: None }
-        ))
-        .collect();
+    let assets = get_images_from_path(Path::new(PATH));
 
     let mut icon_server = MyIconServer::new(assets);
 
@@ -57,10 +62,12 @@ fn main() {
     rl.set_target_fps(60);
     
     let mut file_dialog_context = FileDialogContext {
-        current_path: ".".into(),
-        menu_position: Vector2::new(20.0, 20.0),
         is_open: false,
-        width: 100,
+        current_path: ".".into(),
+        width: rl.measure_text(SELECT_FOLDER_TEXT, TEXT_SIZE) + TEXT_PADDING * 2,
+        menu_position: Vector2::new(20.0, 20.0),
+        is_dragging: false,
+        menu_started_dragging_position: Vector2::zero(),
     };
 
     let mut textures_dirty = true;
@@ -205,21 +212,41 @@ fn main() {
             );
         }
     
+        // TODO: Make sure things below this cannot be touched
         /* -------------------- FILE DIALOG -------------------- */
         if file_dialog_context.is_open {
-            const TEXT_SIZE: i32 = 30;
-            const TEXT_PADDING: i32 = 10;
-            
             let mut xx = file_dialog_context.menu_position.x as i32;
             let mut yy = file_dialog_context.menu_position.y as i32;
 
             let mut file_names = list_directory(&file_dialog_context.current_path);
 
+            // TODO: Move up, near input section, consolidate
             { /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
+                // Handle dragging
+                let handle_rec = Rectangle {
+                    x: xx as f32, y: yy as f32,
+                    width: file_dialog_context.width as f32,
+                    height: TEXT_SIZE as f32,
+                };
+                if handle_rec.check_collision_point_rec(mouse_pos) && d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                    file_dialog_context.is_dragging = true;
+                    file_dialog_context.menu_started_dragging_position = mouse_pos;
+                }
+
+                if file_dialog_context.is_dragging {
+                    let diff = mouse_pos - file_dialog_context.menu_started_dragging_position;
+                    xx += diff.x as i32;
+                    yy += diff.y as i32;
+
+                    if d.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+                        file_dialog_context.menu_position += diff;
+                        file_dialog_context.is_dragging = false;
+                    }
+                }
+
                 let mut xx = xx;
                 let mut yy = yy;
 
-                // TODO: HANDLE DRAGGING
                 yy += TEXT_SIZE; // for current folder text
                 
                 xx += TEXT_PADDING; // indent for text
@@ -245,13 +272,14 @@ fn main() {
 
                         // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
                         file_dialog_context.current_path.push(&file);
-                        println!("Current path is: {:?}", file_dialog_context.current_path);
                     }
                     yy += TEXT_SIZE;
                 }
+                yy += TEXT_PADDING;
                 
                 if refile { file_names = list_directory(&file_dialog_context.current_path); }
 
+                // check if we need to make the width bigger
                 let width = file_names
                     .iter()
                     .chain([file_dialog_context.current_path.to_str().unwrap().to_string()].iter())
@@ -261,28 +289,74 @@ fn main() {
                     + TEXT_PADDING * 2;
                 if width > file_dialog_context.width { file_dialog_context.width = width; }
 
-                // TODO: HANDLE SELECT FOLDER
+                // Handle Select Folder Button
+                let select_folder_rec = Rectangle {
+                    x: xx as f32,
+                    y: (yy + TEXT_PADDING) as f32,
+                    width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+                    height: TEXT_SIZE as f32
+                };
+                // TODO: Factor out that d.is_mouse_button_pressed, to some struct that holds all the button states
+                if select_folder_rec.check_collision_point_rec(mouse_pos) && d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                    icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
+                    textures_dirty = true; // Remember to call when
+
+                    file_dialog_context.is_open = false; // Close it because we done here
+                }
             }
 
-            { // Draw current folder // TODO: handle dragging
-                let mut xx = xx;
+            { // Draw current folder
+                const FILE_DIALOG_CURRENT_FOLDER_COLOR: Color = Color::MAROON;
+                const FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR: Color = Color::GOLDENROD;
 
-                d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE, Color::GRAY);
-                
-                xx += TEXT_PADDING;
-                d.draw_text(file_dialog_context.current_path.to_str().unwrap(), xx, yy, TEXT_SIZE, Color::GOLDENROD);
+                d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE, FILE_DIALOG_CURRENT_FOLDER_COLOR);
+                d.draw_text(file_dialog_context.current_path.to_str().unwrap(), xx + TEXT_PADDING, yy, TEXT_SIZE, FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR);
                 yy += TEXT_SIZE;
             }
 
             { // Draw Backing Box
+                const FILE_DIALOG_BACKING_BOX_COLOR: Color = Color::DARKGRAY;
+
                 let total_file_names_height = file_names.len() as i32 * TEXT_SIZE + TEXT_PADDING * 2;
-                d.draw_rectangle(xx, yy, file_dialog_context.width, total_file_names_height, Color::DARKGRAY);
+                d.draw_rectangle(xx, yy, file_dialog_context.width, total_file_names_height, FILE_DIALOG_BACKING_BOX_COLOR);
             }
 
-            /* -------------------- DRAW LABELS -------------------- */
-            xx += TEXT_PADDING;
-            yy += TEXT_PADDING;
-            for file in file_names {
+            { /* -------------------- DRAW LABELS -------------------- */
+                const FILE_DIALOG_LABEL_HOVER_COLOR: Color = Color::ORANGE;
+                const FILE_DIALOG_LABEL_TEXT_COLOR: Color = Color::GOLD;
+
+                let mut xx = xx;
+
+                xx += TEXT_PADDING;
+                yy += TEXT_PADDING;
+                for file in file_names {
+                    let rec = Rectangle {
+                        x: xx as f32,
+                        y: yy as f32,
+                        width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+                        height: TEXT_SIZE as f32
+                    };
+
+                    if rec.check_collision_point_rec(mouse_pos) {
+                        let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
+                        d.draw_rectangle_rec(padded, FILE_DIALOG_LABEL_HOVER_COLOR);
+                    }
+
+                    d.draw_text(&file, xx, yy, TEXT_SIZE, FILE_DIALOG_LABEL_TEXT_COLOR);
+                    yy += TEXT_SIZE;
+                }
+
+                yy += TEXT_PADDING;
+            }
+
+            { // Select folder button
+                let mut xx = xx;
+                
+                d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE + TEXT_PADDING * 2, Color::GREEN);
+
+                xx += TEXT_PADDING;
+                yy += TEXT_PADDING;
+
                 let rec = Rectangle {
                     x: xx as f32,
                     y: yy as f32,
@@ -292,16 +366,14 @@ fn main() {
 
                 if rec.check_collision_point_rec(mouse_pos) {
                     let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
-                    d.draw_rectangle_rec(padded, Color::ORANGE);
+                    d.draw_rectangle_rec(padded, Color::WHEAT);
                 }
 
-                d.draw_text(&file, xx, yy, TEXT_SIZE, Color::GOLD);
-                yy += TEXT_SIZE;
-            }
+                // TODO: Center this
+                d.draw_text(SELECT_FOLDER_TEXT, xx, yy, TEXT_SIZE, Color::BLACK);
 
-            // TODO: Select folder button
-            // xx -= TEXT_PADDING;
-            // d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE, Color::GREEN);
+                // yy += TEXT_SIZE + TEXT_PADDING;
+            }
         }
     }
 }
@@ -334,7 +406,7 @@ impl ToAndFromJsonValue for String {
     }
 }
 
-fn get_images_from_path(path: &str) -> Vec<(String, Image)> {
+fn get_images_from_path(path: &Path) -> Vec<(String, ImageContainer)> {
     let paths = fs::read_dir(path).expect("Valid directory");
 
     let names: Vec<_> = paths
@@ -351,7 +423,12 @@ fn get_images_from_path(path: &str) -> Vec<(String, Image)> {
         )
         .collect();
 
-    return names.into_iter().zip(images).collect();
+    names.into_iter()
+        .zip(images)
+        .map(|(s, image)|
+            (s, ImageContainer { image, texture: None }
+        ))
+        .collect()
 }
 
 fn list_directory(path: &Path) -> Vec<String> {
@@ -375,8 +452,10 @@ fn list_directory(path: &Path) -> Vec<String> {
 
     file_names.reverse();
 
-    file_names.insert(0, ".".into()); // TODO: Remove this?
-    file_names.insert(1, "..".into());
+    file_names.insert(0, "..".into());
+    // file_names.insert(0, ".".into()); // TODO: Remove this?
+
+    // TODO: sort by type then name
 
     file_names
 }

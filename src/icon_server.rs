@@ -1,5 +1,5 @@
 pub struct MyIconServer<T> {
-    pub assets: Vec<(String, T)>,
+    pub assets: Vec<(String, T)>, // TODO: Remove pub at some point? make hidden ect...
     selected: String,     // TODO: use str
     default_icon: String, // TODO: use str
 }
@@ -13,6 +13,10 @@ impl<T> MyIconServer<T> {
 			assets,
 		}
 	}
+
+    pub fn load_images(&mut self, assets: &mut Vec<(String, T)>) {
+        self.assets.append(assets);
+    }
 
     pub fn get_selected_name(&self) -> &str {
         return &self.selected;
