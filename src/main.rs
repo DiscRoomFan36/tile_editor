@@ -18,21 +18,39 @@ const SQUARE_SIZE       : f32 = 64.0;
 const SQUARE_SPACING    : f32 = 10.0;
 const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
 
+const QUICK_SAVE_FILE : &str = "quick-save.json";
+
+// TODO: Remove hardcode? is it good to have something in the pallet at startup?
+const PATH            : &str = "./assets/icons";
+
 const PALLET_PER_ROW : usize = 3;
 
 const TEXT_SIZE    : i32 = 30;
 const TEXT_PADDING : i32 = 10;
 
-const SELECT_FOLDER_TEXT: &str = "Select Folder";
+const SELECT_FOLDER_TEXT : &str = "Select Folder";
 
-const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
-const PALLET_SELECTED_COLOR : Color = Color::RED;
-const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
+const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
+
+const GRID_TEXTURE_TINT                     : Color = Color::WHITE;
+
+const HIGHLIGHT_COLOR                       : Color = Color::ORANGE;
+const PALLET_SELECTED_COLOR                 : Color = Color::RED;
+const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
+const PALLET_TEXTURE_TINT                   : Color = GRID_TEXTURE_TINT;
+
+const FILE_DIALOG_CURRENT_FOLDER_COLOR      : Color = Color::MAROON;
+const FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR : Color = Color::GOLDENROD;
+const FILE_DIALOG_BACKING_BOX_COLOR         : Color = Color::DARKGRAY;
+
+const FILE_DIALOG_LABEL_HOVER_COLOR         : Color = Color::ORANGE;
+const FILE_DIALOG_LABEL_TEXT_COLOR          : Color = Color::GOLD;
+
+const FILE_DIALOG_SELECT_BACKING_COLOR      : Color = Color::GREEN;
+const FILE_DIALOG_SELECT_HOVER_COLOR        : Color = Color::WHEAT;
+const FILE_DIALOG_SELECT_TEXT_COLOR         : Color = Color::BLACK;
 
 const FILE_DIALOG_START_POSITION : Vector2 = Vector2 { x: 100.0, y: 100.0 };
-
-// TODO: Remove hardcode? is it good to have something in the pallet at startup?
-const PATH: &str = "./assets/icons";
 
 struct ImageContainer {
     image: Image,
@@ -83,7 +101,6 @@ fn main() {
         /* -------------------- KEY EVENT HANDLERS -------------------- */
     
         { // Quick (Save / Load) Handler
-            const QUICK_SAVE_FILE: &str = "quick-save.json";
             if rl.is_key_pressed(KeyboardKey::KEY_P) {
                 println!("Saving Grid!"); // TODO: draw something to the screen
 
@@ -299,8 +316,7 @@ fn main() {
         /* -------------------- DRAWING -------------------- */
         let mut d = rl.begin_drawing(&thread);
 
-        d.clear_background(Color::LIGHTGRAY);
-
+        d.clear_background(BACKGROUND_COLOR);
 
         /* -------------------- DRAW PALLET -------------------- */
         for i in 0..icon_server.assets.len() {
@@ -330,7 +346,7 @@ fn main() {
 
             d.draw_texture(
                 image_container.texture.as_ref().unwrap(),
-                rec.x as i32, rec.y as i32, Color::WHITE
+                rec.x as i32, rec.y as i32, PALLET_TEXTURE_TINT
             );
         }
 
@@ -351,10 +367,10 @@ fn main() {
             } else {
                 icon_server.get_default_handle()
             };
-    
+
             d.draw_texture(
                 image_container.texture.as_ref().unwrap(),
-                rec.x as i32, rec.y as i32, Color::WHITE
+                rec.x as i32, rec.y as i32, GRID_TEXTURE_TINT
             );
         }
     
@@ -366,25 +382,17 @@ fn main() {
             let file_names = list_directory(&file_dialog_context.current_path);
 
             { // Draw current folder
-                const FILE_DIALOG_CURRENT_FOLDER_COLOR: Color = Color::MAROON;
-                const FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR: Color = Color::GOLDENROD;
-
                 d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE, FILE_DIALOG_CURRENT_FOLDER_COLOR);
                 d.draw_text(file_dialog_context.current_path.to_str().unwrap(), xx + TEXT_PADDING, yy, TEXT_SIZE, FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR);
                 yy += TEXT_SIZE;
             }
 
             { // Draw Backing Box
-                const FILE_DIALOG_BACKING_BOX_COLOR: Color = Color::DARKGRAY;
-
                 let total_file_names_height = file_names.len() as i32 * TEXT_SIZE + TEXT_PADDING * 2;
                 d.draw_rectangle(xx, yy, file_dialog_context.width, total_file_names_height, FILE_DIALOG_BACKING_BOX_COLOR);
             }
 
             { // Draw Labels
-                const FILE_DIALOG_LABEL_HOVER_COLOR: Color = Color::ORANGE;
-                const FILE_DIALOG_LABEL_TEXT_COLOR: Color = Color::GOLD;
-
                 let mut xx = xx;
 
                 xx += TEXT_PADDING;
@@ -412,7 +420,7 @@ fn main() {
             { // Select folder button
                 let mut xx = xx;
                 
-                d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE + TEXT_PADDING * 2, Color::GREEN);
+                d.draw_rectangle(xx, yy, file_dialog_context.width, TEXT_SIZE + TEXT_PADDING * 2, FILE_DIALOG_SELECT_BACKING_COLOR);
 
                 xx += TEXT_PADDING;
                 yy += TEXT_PADDING;
@@ -426,11 +434,11 @@ fn main() {
 
                 if hovering_over_file_dialog_select {
                     let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
-                    d.draw_rectangle_rec(padded, Color::WHEAT);
+                    d.draw_rectangle_rec(padded, FILE_DIALOG_SELECT_HOVER_COLOR);
                 }
 
                 // TODO: Center this
-                d.draw_text(SELECT_FOLDER_TEXT, xx, yy, TEXT_SIZE, Color::BLACK);
+                d.draw_text(SELECT_FOLDER_TEXT, xx, yy, TEXT_SIZE, FILE_DIALOG_SELECT_TEXT_COLOR);
 
                 // yy += TEXT_SIZE + TEXT_PADDING;
             }
