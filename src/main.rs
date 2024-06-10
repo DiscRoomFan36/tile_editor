@@ -64,6 +64,7 @@ struct FileDialogContext {
     menu_position: Vector2,
     is_dragging: bool,
     menu_started_dragging_position: Vector2,
+    over_file_dialog: bool,
 }
 
 fn main() {
@@ -90,10 +91,11 @@ fn main() {
         menu_position: FILE_DIALOG_START_POSITION,
         is_dragging: false,
         menu_started_dragging_position: Vector2::zero(),
+        over_file_dialog: false,
     };
 
-    let mut textures_dirty = true;
     // let dirty = true; // TODO: refactor for this
+    let mut textures_dirty = true;
 
     /* -------------------- EVENT LOOP -------------------- */
     while !rl.window_should_close() {
@@ -156,12 +158,12 @@ fn main() {
         let mouse_left_released = rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT);
         let mouse_right_pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT);
 
-        let mut over_file_dialog = false;
-
-        let mut hovering_over_file_dialog = vec![];
         let mut hovering_over_file_dialog_select = false;
-        let mut hovering_over_pallet      = vec![false; icon_server.assets.len()];
-        let mut hovering_over_grid        = vec![false; grid.rows*grid.cols];
+        let mut hovering_over_file_dialog   = vec![];
+        let mut hovering_over_pallet        = vec![false; icon_server.assets.len()];
+        let mut hovering_over_grid          = vec![false; grid.rows*grid.cols];
+        
+        file_dialog_context.over_file_dialog = false;
 
         /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
         if file_dialog_context.is_open {
@@ -257,11 +259,11 @@ fn main() {
                 width: file_dialog_context.width as f32,
                 height: (file_names.len() as i32 * TEXT_SIZE + TEXT_SIZE * 2 + TEXT_PADDING * 4) as f32,
             };
-            over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_pos);
+            file_dialog_context.over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_pos);
         }
 
         /* -------------------- PALLET --- HANDLE MOUSE EVENTS -------------------- */
-        if !over_file_dialog {
+        if !file_dialog_context.over_file_dialog {
             for i in 0..icon_server.assets.len() {
                 let name = icon_server.assets[i].0.clone();
                 let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
@@ -281,7 +283,7 @@ fn main() {
         }
 
         /* -------------------- GRID --- HANDLE MOUSE EVENTS -------------------- */
-        if !over_file_dialog {
+        if !file_dialog_context.over_file_dialog {
             for i in 0..grid.rows*grid.cols {
                 let (x, y) = index_to_pos(i, grid.size());
                 let rec = new_square(start_pos, (x, y));
@@ -318,6 +320,30 @@ fn main() {
 
         d.clear_background(BACKGROUND_COLOR);
 
+        /* -------------------- DRAW GRID -------------------- */
+        for i in 0..grid.rows*grid.cols {
+            let (x, y) = index_to_pos(i, grid.size());
+
+            let rec = new_square(start_pos, (x, y));
+            
+            /* -------------------- ON HOVER GRID -------------------- */
+            if hovering_over_grid[i] {
+                // draw some highlighting around the hovered rectangle
+                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
+            }
+    
+            let image_container = if let Some(name) = grid.get((x, y)) {
+                icon_server.get_by_name(name).expect("Name exist in icon server")
+            } else {
+                icon_server.get_default_handle()
+            };
+
+            d.draw_texture(
+                image_container.texture.as_ref().unwrap(),
+                rec.x as i32, rec.y as i32, GRID_TEXTURE_TINT
+            );
+        }
+    
         /* -------------------- DRAW PALLET -------------------- */
         for i in 0..icon_server.assets.len() {
             let name = icon_server.assets[i].0.clone();
@@ -350,30 +376,6 @@ fn main() {
             );
         }
 
-        /* -------------------- DRAW GRID -------------------- */
-        for i in 0..grid.rows*grid.cols {
-            let (x, y) = index_to_pos(i, grid.size());
-
-            let rec = new_square(start_pos, (x, y));
-            
-            /* -------------------- ON HOVER GRID -------------------- */
-            if hovering_over_grid[i] {
-                // draw some highlighting around the hovered rectangle
-                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
-            }
-    
-            let image_container = if let Some(name) = grid.get((x, y)) {
-                icon_server.get_by_name(name).expect("Name exist in icon server")
-            } else {
-                icon_server.get_default_handle()
-            };
-
-            d.draw_texture(
-                image_container.texture.as_ref().unwrap(),
-                rec.x as i32, rec.y as i32, GRID_TEXTURE_TINT
-            );
-        }
-    
         /* -------------------- FILE DIALOG -------------------- */
         if file_dialog_context.is_open {
             let xx = file_dialog_context.menu_position.x as i32;
