@@ -11,15 +11,17 @@ use std::path::{Path, PathBuf};
 use raylib::prelude::*;
 use raylib::consts::{KeyboardKey, MouseButton};
 
-const WINDOW_WIDTH: i32 = 800;
-const WINDOW_HEIGHT: i32 = 600;
+const WINDOW_WIDTH  : i32 = 800;
+const WINDOW_HEIGHT : i32 = 600;
 
 const SQUARE_SIZE       : f32 = 64.0;
 const SQUARE_SPACING    : f32 = 10.0;
 const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
 
-const TEXT_SIZE: i32 = 30;
-const TEXT_PADDING: i32 = 10;
+const PALLET_PER_ROW : usize = 3;
+
+const TEXT_SIZE    : i32 = 30;
+const TEXT_PADDING : i32 = 10;
 
 const SELECT_FOLDER_TEXT: &str = "Select Folder";
 
@@ -27,9 +29,9 @@ const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
 const PALLET_SELECTED_COLOR : Color = Color::RED;
 const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
 
-const FILE_DIALOG_START_POSITION: Vector2 = Vector2 { x: 100.0, y: 100.0 };
+const FILE_DIALOG_START_POSITION : Vector2 = Vector2 { x: 100.0, y: 100.0 };
 
-// TODO: Remove hardcode
+// TODO: Remove hardcode? is it good to have something in the pallet at startup?
 const PATH: &str = "./assets/icons";
 
 struct ImageContainer {
@@ -131,8 +133,18 @@ fn main() {
 
         /* -------------------- MOUSE EVENT HANDLERS -------------------- */
         // TODO: consolidate these into a context
-        let mouse_pos   = rl.get_mouse_position();
-        let mouse_delta = rl.get_mouse_delta();
+        let mouse_pos        = rl.get_mouse_position();
+        let mouse_delta      = rl.get_mouse_delta();
+        let mouse_left_pressed  = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
+        let mouse_left_released = rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT);
+        let mouse_right_pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT);
+
+        let mut over_file_dialog = false;
+
+        let mut hovering_over_file_dialog = vec![];
+        let mut hovering_over_file_dialog_select = false;
+        let mut hovering_over_pallet      = vec![false; icon_server.assets.len()];
+        let mut hovering_over_grid        = vec![false; grid.rows*grid.cols];
 
         /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
         if file_dialog_context.is_open {
@@ -140,6 +152,7 @@ fn main() {
             let mut yy = file_dialog_context.menu_position.y as i32;
 
             let file_names = list_directory(&file_dialog_context.current_path);
+            hovering_over_file_dialog = vec![false; file_names.len()];
 
             // Handle dragging
             let handle_rec = Rectangle {
@@ -147,14 +160,14 @@ fn main() {
                 width: file_dialog_context.width as f32,
                 height: TEXT_SIZE as f32,
             };
-            if handle_rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            if handle_rec.check_collision_point_rec(mouse_pos) && mouse_left_pressed {
                 file_dialog_context.is_dragging = true;
                 file_dialog_context.menu_started_dragging_position = mouse_pos;
             }
 
             if file_dialog_context.is_dragging {
                 file_dialog_context.menu_position += mouse_delta;
-                if rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT) {
+                if mouse_left_released {
                     file_dialog_context.is_dragging = false;
                 }
             }
@@ -165,7 +178,7 @@ fn main() {
             yy += TEXT_PADDING; // indent for backing padding
 
             let mut refile = false;
-            for file in &file_names {
+            for (i, file) in file_names.iter().enumerate() {
 
                 let rec = Rectangle {
                     x: xx as f32, y: yy as f32,
@@ -173,17 +186,21 @@ fn main() {
                     height: TEXT_SIZE as f32
                 };
 
-                if rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    assert!(!refile);
-                    refile = true;
+                if rec.check_collision_point_rec(mouse_pos) {
+                    hovering_over_file_dialog[i] = true;
+
+                    if mouse_left_pressed {
+                        assert!(!refile);
+                        refile = true;
                     
-                    let p = file_dialog_context.current_path.join(&file);
-
-                    assert!(p.exists());
-                    assert!(p.is_dir(), "Can only click on directories"); // TODO
-
-                    // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
-                    file_dialog_context.current_path.push(&file);
+                        let p = file_dialog_context.current_path.join(&file);
+                    
+                        assert!(p.exists());
+                        assert!(p.is_dir(), "Can only click on directories"); // TODO
+                    
+                        // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
+                        file_dialog_context.current_path.push(&file);
+                    }
                 }
                 yy += TEXT_SIZE;
             }
@@ -207,13 +224,61 @@ fn main() {
                 width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
                 height: TEXT_SIZE as f32
             };
-            // TODO: Factor out that d.is_mouse_button_pressed, to some struct that holds all the button states
-            if select_folder_rec.check_collision_point_rec(mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                // TODO: This could add duplicates, get icon_server to dedup?
-                icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
-                textures_dirty = true; // Remember to call when adding images
+            if select_folder_rec.check_collision_point_rec(mouse_pos) {
+                hovering_over_file_dialog_select = true;
+                if mouse_left_pressed {
+                    // TODO: This could add duplicates, get icon_server to dedup?
+                    icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
+                    textures_dirty = true; // Remember to call when adding images
 
-                file_dialog_context.is_open = false; // Close it because we done here
+                    file_dialog_context.is_open = false; // Close it because we done here
+                }
+            }
+            let file_dialog_rec = Rectangle {
+                x: file_dialog_context.menu_position.x,
+                y: file_dialog_context.menu_position.y,
+                width: file_dialog_context.width as f32,
+                height: (file_names.len() as i32 * TEXT_SIZE + TEXT_SIZE * 2 + TEXT_PADDING * 4) as f32,
+            };
+            over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_pos);
+        }
+
+        /* -------------------- PALLET --- HANDLE MOUSE EVENTS -------------------- */
+        if !over_file_dialog {
+            for i in 0..icon_server.assets.len() {
+                let name = icon_server.assets[i].0.clone();
+                let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
+
+                let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
+
+                if rec.check_collision_point_rec(mouse_pos) {
+                    hovering_over_pallet[i] = true;
+                    if mouse_left_pressed {
+                        icon_server.set_selected_by_name(&name);
+                    }
+                    if mouse_right_pressed {
+                        icon_server.set_default_by_name(&name);
+                    }
+                }
+            }
+        }
+
+        /* -------------------- GRID --- HANDLE MOUSE EVENTS -------------------- */
+        if !over_file_dialog {
+            for i in 0..grid.rows*grid.cols {
+                let (x, y) = index_to_pos(i, grid.size());
+                let rec = new_square(start_pos, (x, y));
+                
+                /* -------------------- ON HOVER GRID -------------------- */
+                if rec.check_collision_point_rec(mouse_pos) {
+                    hovering_over_grid[i] = true;
+                    if mouse_left_pressed {
+                        grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
+                    }
+                    if mouse_right_pressed {
+                        grid.set((x, y), None);
+                    }
+                }
             }
         }
 
@@ -238,24 +303,15 @@ fn main() {
 
 
         /* -------------------- DRAW PALLET -------------------- */
-        const PER_ROW: usize = 3;
         for i in 0..icon_server.assets.len() {
             let name = icon_server.assets[i].0.clone();
-            let (x, y) = index_to_pos(i, (999, PER_ROW));
+            let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
 
             let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
 
-            /* -------------------- ON HOVER PALLET -------------------- */
-            if rec.check_collision_point_rec(mouse_pos) {
+            if *hovering_over_pallet.get(i).unwrap_or(&false) {
                 // draw some highlighting around the hovered rectangle
                 d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
-
-                if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    icon_server.set_selected_by_name(&name);
-                }
-                if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
-                    icon_server.set_default_by_name(&name);
-                }
             }
 
             // Default and selected highlighting
@@ -285,16 +341,9 @@ fn main() {
             let rec = new_square(start_pos, (x, y));
             
             /* -------------------- ON HOVER GRID -------------------- */
-            if rec.check_collision_point_rec(mouse_pos) {
+            if hovering_over_grid[i] {
                 // draw some highlighting around the hovered rectangle
                 d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
-    
-                if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
-                }
-                if d.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
-                    grid.set((x, y), None);
-                }
             }
     
             let image_container = if let Some(name) = grid.get((x, y)) {
@@ -309,7 +358,6 @@ fn main() {
             );
         }
     
-        // TODO: Make sure things below this cannot be touched
         /* -------------------- FILE DIALOG -------------------- */
         if file_dialog_context.is_open {
             let xx = file_dialog_context.menu_position.x as i32;
@@ -341,7 +389,7 @@ fn main() {
 
                 xx += TEXT_PADDING;
                 yy += TEXT_PADDING;
-                for file in file_names {
+                for (i, file) in file_names.into_iter().enumerate() {
                     let rec = Rectangle {
                         x: xx as f32,
                         y: yy as f32,
@@ -349,7 +397,7 @@ fn main() {
                         height: TEXT_SIZE as f32
                     };
 
-                    if rec.check_collision_point_rec(mouse_pos) {
+                    if *hovering_over_file_dialog.get(i).unwrap_or(&false) {
                         let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
                         d.draw_rectangle_rec(padded, FILE_DIALOG_LABEL_HOVER_COLOR);
                     }
@@ -376,7 +424,7 @@ fn main() {
                     height: TEXT_SIZE as f32
                 };
 
-                if rec.check_collision_point_rec(mouse_pos) {
+                if hovering_over_file_dialog_select {
                     let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
                     d.draw_rectangle_rec(padded, Color::WHEAT);
                 }
