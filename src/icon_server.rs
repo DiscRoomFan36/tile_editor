@@ -14,8 +14,12 @@ impl<T> MyIconServer<T> {
 		}
 	}
 
-    pub fn load_images(&mut self, assets: &mut Vec<(String, T)>) {
+    pub fn load_icons(&mut self, assets: &mut Vec<(String, T)>) {
         self.assets.append(assets);
+    }
+
+    pub fn load_icon(&mut self, asset: (String, T)) {
+        self.assets.push(asset);
     }
 
     pub fn get_selected_name(&self) -> &str {

@@ -212,13 +212,20 @@ fn main() {
                         assert!(!refile);
                         refile = true;
                     
-                        let p = file_dialog_context.current_path.join(&file);
+                        let path = file_dialog_context.current_path.join(&file);
                     
-                        assert!(p.exists());
-                        assert!(p.is_dir(), "Can only click on directories"); // TODO
+                        assert!(path.exists());
+                        if path.is_dir() {
+                            // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
+                            file_dialog_context.current_path.push(&file);
+                        } else {
+                            icon_server.load_icon(get_image_from_path(&path));
+                            textures_dirty = true;
+                            
+                            file_dialog_context.is_open = false;
+                            // return here
+                        }
                     
-                        // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
-                        file_dialog_context.current_path.push(&file);
                     }
                 }
                 yy += TEXT_SIZE;
@@ -247,7 +254,7 @@ fn main() {
                 hovering_over_file_dialog_select = true;
                 if mouse_left_pressed {
                     // TODO: This could add duplicates, get icon_server to dedup?
-                    icon_server.load_images(&mut get_images_from_path(&file_dialog_context.current_path));
+                    icon_server.load_icons(&mut get_images_from_path(&file_dialog_context.current_path));
                     textures_dirty = true; // Remember to call when adding images
 
                     file_dialog_context.is_open = false; // Close it because we done here
@@ -320,6 +327,7 @@ fn main() {
 
         d.clear_background(BACKGROUND_COLOR);
 
+        // TODO: Move the grid out of the way
         /* -------------------- DRAW GRID -------------------- */
         for i in 0..grid.rows*grid.cols {
             let (x, y) = index_to_pos(i, grid.size());
@@ -476,6 +484,13 @@ impl ToAndFromJsonValue for String {
     }
 }
 
+fn get_image_from_path(path: &Path) -> (String, ImageContainer) {
+    let name = path.to_str().expect("Valid path").to_string();
+
+    let image = raylib::texture::Image::load_image(&name).expect("Is valid image");
+
+    (name, ImageContainer { image, texture: None })
+}
 fn get_images_from_path(path: &Path) -> Vec<(String, ImageContainer)> {
     let paths = fs::read_dir(path).expect("Valid directory");
 
