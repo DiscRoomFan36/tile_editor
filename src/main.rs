@@ -57,6 +57,21 @@ struct ImageContainer {
     texture: Option<Texture2D>,
 }
 
+struct MouseContext {
+    mouse_pos   :  Vector2,
+    mouse_delta : Vector2,
+    mouse_left_pressed  : bool,
+    mouse_left_released : bool,
+    mouse_right_pressed : bool,
+
+    hovering_over_file_dialog_select : bool,
+    hovering_over_file_dialog        : Vec<bool>,
+    hovering_over_pallet             : Vec<bool>,
+    hovering_over_grid               : Vec<bool>,
+
+    over_file_dialog : bool,
+}
+
 struct FileDialogContext {
     is_open: bool,
     current_path: PathBuf,
@@ -64,7 +79,6 @@ struct FileDialogContext {
     menu_position: Vector2,
     is_dragging: bool,
     menu_started_dragging_position: Vector2,
-    over_file_dialog: bool,
 }
 
 fn main() {
@@ -91,8 +105,8 @@ fn main() {
         menu_position: FILE_DIALOG_START_POSITION,
         is_dragging: false,
         menu_started_dragging_position: Vector2::zero(),
-        over_file_dialog: false,
     };
+
 
     // let dirty = true; // TODO: refactor for this
     let mut textures_dirty = true;
@@ -151,163 +165,27 @@ fn main() {
         }
 
         /* -------------------- MOUSE EVENT HANDLERS -------------------- */
-        // TODO: consolidate these into a context
-        let mouse_pos        = rl.get_mouse_position();
-        let mouse_delta      = rl.get_mouse_delta();
-        let mouse_left_pressed  = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT);
-        let mouse_left_released = rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT);
-        let mouse_right_pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT);
+        let mut mouse_context = MouseContext {
+            mouse_pos           : rl.get_mouse_position(),
+            mouse_delta         : rl.get_mouse_delta(),
+            mouse_left_pressed  : rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT),
+            mouse_left_released : rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT),
+            mouse_right_pressed : rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT),
+    
+            hovering_over_file_dialog_select : false,
+            hovering_over_file_dialog        : vec![],
+            hovering_over_pallet             : vec![false; icon_server.assets.len()],
+            hovering_over_grid               : vec![false; grid.rows*grid.cols],
 
-        let mut hovering_over_file_dialog_select = false;
-        let mut hovering_over_file_dialog   = vec![];
-        let mut hovering_over_pallet        = vec![false; icon_server.assets.len()];
-        let mut hovering_over_grid          = vec![false; grid.rows*grid.cols];
+            over_file_dialog: false,
+        };
         
-        file_dialog_context.over_file_dialog = false;
+        // Must be called first
+        update_file_dialog_mouse_events(&rl, &mut file_dialog_context, &mut mouse_context, &mut icon_server, &mut textures_dirty);
 
-        /* -------------------- FILE DIALOG --- HANDLE MOUSE EVENTS -------------------- */
-        if file_dialog_context.is_open {
-            let mut xx = file_dialog_context.menu_position.x as i32;
-            let mut yy = file_dialog_context.menu_position.y as i32;
+        update_pallet_mouse_events(&mut mouse_context, &mut icon_server);
 
-            let file_names = list_directory(&file_dialog_context.current_path);
-            hovering_over_file_dialog = vec![false; file_names.len()];
-
-            // Handle dragging
-            let handle_rec = Rectangle {
-                x: xx as f32, y: yy as f32,
-                width: file_dialog_context.width as f32,
-                height: TEXT_SIZE as f32,
-            };
-            if handle_rec.check_collision_point_rec(mouse_pos) && mouse_left_pressed {
-                file_dialog_context.is_dragging = true;
-                file_dialog_context.menu_started_dragging_position = mouse_pos;
-            }
-
-            if file_dialog_context.is_dragging {
-                file_dialog_context.menu_position += mouse_delta;
-                if mouse_left_released {
-                    file_dialog_context.is_dragging = false;
-                }
-            }
-
-            yy += TEXT_SIZE; // for current folder text
-            
-            xx += TEXT_PADDING; // indent for text
-            yy += TEXT_PADDING; // indent for backing padding
-
-            let mut refile = false;
-            for (i, file) in file_names.iter().enumerate() {
-
-                let rec = Rectangle {
-                    x: xx as f32, y: yy as f32,
-                    width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
-                    height: TEXT_SIZE as f32
-                };
-
-                if rec.check_collision_point_rec(mouse_pos) {
-                    hovering_over_file_dialog[i] = true;
-
-                    if mouse_left_pressed {
-                        assert!(!refile);
-                        refile = true;
-                    
-                        let path = file_dialog_context.current_path.join(&file);
-                    
-                        assert!(path.exists());
-                        if path.is_dir() {
-                            // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
-                            file_dialog_context.current_path.push(&file);
-                        } else {
-                            icon_server.load_icon(get_image_from_path(&path));
-                            textures_dirty = true;
-                            
-                            file_dialog_context.is_open = false;
-                            // return here
-                        }
-                    
-                    }
-                }
-                yy += TEXT_SIZE;
-            }
-            yy += TEXT_PADDING;
-            
-            // TODO: Only do this when changing path, but also on first open
-            // check if we need to make the width bigger
-            let width = file_names
-                .iter()
-                .chain([file_dialog_context.current_path.to_str().unwrap().to_string()].iter())
-                .map(|file| rl.measure_text(&file, TEXT_SIZE))
-                .max()
-                .unwrap_or_default()
-                + TEXT_PADDING * 2;
-            if width > file_dialog_context.width { file_dialog_context.width = width; }
-
-            // Handle Select Folder Button
-            let select_folder_rec = Rectangle {
-                x: xx as f32,
-                y: (yy + TEXT_PADDING) as f32,
-                width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
-                height: TEXT_SIZE as f32
-            };
-            if select_folder_rec.check_collision_point_rec(mouse_pos) {
-                hovering_over_file_dialog_select = true;
-                if mouse_left_pressed {
-                    // TODO: This could add duplicates, get icon_server to dedup?
-                    icon_server.load_icons(&mut get_images_from_path(&file_dialog_context.current_path));
-                    textures_dirty = true; // Remember to call when adding images
-
-                    file_dialog_context.is_open = false; // Close it because we done here
-                }
-            }
-            let file_dialog_rec = Rectangle {
-                x: file_dialog_context.menu_position.x,
-                y: file_dialog_context.menu_position.y,
-                width: file_dialog_context.width as f32,
-                height: (file_names.len() as i32 * TEXT_SIZE + TEXT_SIZE * 2 + TEXT_PADDING * 4) as f32,
-            };
-            file_dialog_context.over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_pos);
-        }
-
-        /* -------------------- PALLET --- HANDLE MOUSE EVENTS -------------------- */
-        if !file_dialog_context.over_file_dialog {
-            for i in 0..icon_server.assets.len() {
-                let name = icon_server.assets[i].0.clone();
-                let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
-
-                let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
-
-                if rec.check_collision_point_rec(mouse_pos) {
-                    hovering_over_pallet[i] = true;
-                    if mouse_left_pressed {
-                        icon_server.set_selected_by_name(&name);
-                    }
-                    if mouse_right_pressed {
-                        icon_server.set_default_by_name(&name);
-                    }
-                }
-            }
-        }
-
-        /* -------------------- GRID --- HANDLE MOUSE EVENTS -------------------- */
-        if !file_dialog_context.over_file_dialog {
-            for i in 0..grid.rows*grid.cols {
-                let (x, y) = index_to_pos(i, grid.size());
-                let rec = new_square(start_pos, (x, y));
-                
-                /* -------------------- ON HOVER GRID -------------------- */
-                if rec.check_collision_point_rec(mouse_pos) {
-                    hovering_over_grid[i] = true;
-                    if mouse_left_pressed {
-                        grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
-                    }
-                    if mouse_right_pressed {
-                        grid.set((x, y), None);
-                    }
-                }
-            }
-        }
-
+        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, start_pos);
 
         /* -------------------- LOAD TEXTURES -------------------- */
         if textures_dirty {
@@ -335,7 +213,7 @@ fn main() {
             let rec = new_square(start_pos, (x, y));
             
             /* -------------------- ON HOVER GRID -------------------- */
-            if hovering_over_grid[i] {
+            if mouse_context.hovering_over_grid[i] {
                 // draw some highlighting around the hovered rectangle
                 d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
             }
@@ -359,7 +237,7 @@ fn main() {
 
             let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
 
-            if *hovering_over_pallet.get(i).unwrap_or(&false) {
+            if *mouse_context.hovering_over_pallet.get(i).unwrap_or(&false) {
                 // draw some highlighting around the hovered rectangle
                 d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
             }
@@ -415,7 +293,7 @@ fn main() {
                         height: TEXT_SIZE as f32
                     };
 
-                    if *hovering_over_file_dialog.get(i).unwrap_or(&false) {
+                    if *mouse_context.hovering_over_file_dialog.get(i).unwrap_or(&false) {
                         let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
                         d.draw_rectangle_rec(padded, FILE_DIALOG_LABEL_HOVER_COLOR);
                     }
@@ -442,7 +320,7 @@ fn main() {
                     height: TEXT_SIZE as f32
                 };
 
-                if hovering_over_file_dialog_select {
+                if mouse_context.hovering_over_file_dialog_select {
                     let padded = pad_rectangle_ex(rec, (TEXT_PADDING / 2) as f32, (TEXT_PADDING / 2) as f32, 0.0, 0.0);
                     d.draw_rectangle_rec(padded, FILE_DIALOG_SELECT_HOVER_COLOR);
                 }
@@ -543,4 +421,161 @@ fn list_directory(path: &Path) -> Vec<String> {
     // TODO: sort by type then name
 
     file_names
+}
+
+// TODO: Pull into another file?
+fn update_file_dialog_mouse_events(
+    rl: &RaylibHandle,
+    file_dialog_context: &mut FileDialogContext,
+    mouse_context: &mut MouseContext,
+    icon_server: &mut MyIconServer<ImageContainer>,
+    textures_dirty: &mut bool,
+) {
+    if !file_dialog_context.is_open { return; }
+
+    let mut xx = file_dialog_context.menu_position.x as i32;
+    let mut yy = file_dialog_context.menu_position.y as i32;
+
+    let file_names = list_directory(&file_dialog_context.current_path);
+    mouse_context.hovering_over_file_dialog = vec![false; file_names.len()];
+
+    // Handle dragging
+    let handle_rec = Rectangle {
+        x: xx as f32, y: yy as f32,
+        width: file_dialog_context.width as f32,
+        height: TEXT_SIZE as f32,
+    };
+
+    if handle_rec.check_collision_point_rec(mouse_context.mouse_pos) && mouse_context.mouse_left_pressed {
+        file_dialog_context.is_dragging = true;
+        file_dialog_context.menu_started_dragging_position = mouse_context.mouse_pos;
+    }
+
+    if file_dialog_context.is_dragging {
+        file_dialog_context.menu_position += mouse_context.mouse_delta;
+        if mouse_context.mouse_left_released {
+            file_dialog_context.is_dragging = false;
+        }
+    }
+
+    yy += TEXT_SIZE; // for current folder text
+    
+    xx += TEXT_PADDING; // indent for text
+    yy += TEXT_PADDING; // indent for backing padding
+
+    for (i, file) in file_names.iter().enumerate() {
+
+        let rec = Rectangle {
+            x: xx as f32, y: yy as f32,
+            width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+            height: TEXT_SIZE as f32
+        };
+
+        if rec.check_collision_point_rec(mouse_context.mouse_pos) {
+            mouse_context.hovering_over_file_dialog[i] = true;
+
+            if mouse_context.mouse_left_pressed {
+                let path = file_dialog_context.current_path.join(&file);
+            
+                assert!(path.exists());
+                if path.is_dir() {
+                    // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
+                    file_dialog_context.current_path.push(&file);
+                } else {
+                    icon_server.load_icon(get_image_from_path(&path));
+                    *textures_dirty = true;
+                    
+                    file_dialog_context.is_open = false;
+                }
+                    
+                return;
+            }
+        }
+        yy += TEXT_SIZE;
+    }
+    yy += TEXT_PADDING;
+    
+    // TODO: Only do this when changing path, but also on first open
+    // check if we need to make the width bigger
+    let width = file_names
+        .iter()
+        .chain([file_dialog_context.current_path.to_str().unwrap().to_string()].iter())
+        .map(|file| rl.measure_text(&file, TEXT_SIZE))
+        .max()
+        .unwrap_or_default()
+        + TEXT_PADDING * 2;
+    if width > file_dialog_context.width { file_dialog_context.width = width; }
+
+    // Handle Select Folder Button
+    let select_folder_rec = Rectangle {
+        x: xx as f32,
+        y: (yy + TEXT_PADDING) as f32,
+        width: (file_dialog_context.width - TEXT_PADDING * 2) as f32,
+        height: TEXT_SIZE as f32
+    };
+    if select_folder_rec.check_collision_point_rec(mouse_context.mouse_pos) {
+        mouse_context.hovering_over_file_dialog_select = true;
+        if mouse_context.mouse_left_pressed {
+            // TODO: This could add duplicates, get icon_server to dedup?
+            icon_server.load_icons(&mut get_images_from_path(&file_dialog_context.current_path));
+            *textures_dirty = true; // Remember to call when adding images
+
+            file_dialog_context.is_open = false; // Close it because we done here
+        }
+    }
+    let file_dialog_rec = Rectangle {
+        x: file_dialog_context.menu_position.x,
+        y: file_dialog_context.menu_position.y,
+        width: file_dialog_context.width as f32,
+        height: (file_names.len() as i32 * TEXT_SIZE + TEXT_SIZE * 2 + TEXT_PADDING * 4) as f32,
+    };
+    mouse_context.over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_context.mouse_pos);
+}
+
+fn update_pallet_mouse_events(
+    mouse_context: &mut MouseContext,
+    icon_server: &mut MyIconServer<ImageContainer>,
+) {
+    if mouse_context.over_file_dialog { return; }
+
+    for i in 0..icon_server.assets.len() {
+        let name = icon_server.assets[i].0.clone();
+        let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
+
+        let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
+
+        if rec.check_collision_point_rec(mouse_context.mouse_pos) {
+            mouse_context.hovering_over_pallet[i] = true;
+            if mouse_context.mouse_left_pressed {
+                icon_server.set_selected_by_name(&name);
+            }
+            if mouse_context.mouse_right_pressed {
+                icon_server.set_default_by_name(&name);
+            }
+        }
+    }
+}
+
+fn update_grid_mouse_events(
+    mouse_context: &mut MouseContext,
+    icon_server: &mut MyIconServer<ImageContainer>,
+    grid: &mut TileGrid<String>,
+    start_pos: Vector2, // TODO: Refactor into context
+) {
+    if mouse_context.over_file_dialog { return; }
+    
+    for i in 0..grid.rows*grid.cols {
+        let (x, y) = index_to_pos(i, grid.size());
+        let rec = new_square(start_pos, (x, y));
+        
+        if rec.check_collision_point_rec(mouse_context.mouse_pos) {
+            mouse_context.hovering_over_grid[i] = true;
+            if mouse_context.mouse_left_pressed {
+                grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
+            }
+            if mouse_context.mouse_right_pressed {
+                grid.set((x, y), None);
+            }
+        }
+    }
 }
