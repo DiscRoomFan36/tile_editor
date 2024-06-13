@@ -6,7 +6,7 @@ use icon_server::*;
 
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use raylib::prelude::*;
 use raylib::consts::{KeyboardKey, MouseButton};
@@ -153,9 +153,15 @@ fn main() {
         }
 
         { // File dialog
+            // TODO: consolidate with mouse events
             if rl.is_key_pressed(KeyboardKey::KEY_O) {
                 file_dialog_context.is_open = !file_dialog_context.is_open;
                 file_dialog_context.is_dragging = false;
+
+                // if there are any "..", reset back to start.
+                if file_dialog_context.current_path.components().any(|p| p == Component::ParentDir) {
+                    file_dialog_context.current_path = ".".into();
+                }
 
                 if file_dialog_context.menu_position.x > WINDOW_WIDTH  as f32 || file_dialog_context.menu_position.x < 0.0
                 || file_dialog_context.menu_position.y > WINDOW_HEIGHT as f32 || file_dialog_context.menu_position.y < 0.0 {
@@ -177,7 +183,7 @@ fn main() {
             hovering_over_pallet             : vec![false; icon_server.assets.len()],
             hovering_over_grid               : vec![false; grid.rows*grid.cols],
 
-            over_file_dialog: false,
+            over_file_dialog : false,
         };
         
         // Must be called first
@@ -416,7 +422,6 @@ fn list_directory(path: &Path) -> Vec<String> {
     file_names.reverse();
 
     file_names.insert(0, "..".into());
-    // file_names.insert(0, ".".into()); // TODO: Remove this?
 
     // TODO: sort by type then name
 
@@ -479,8 +484,8 @@ fn update_file_dialog_mouse_events(
             
                 assert!(path.exists());
                 if path.is_dir() {
-                    // TODO: Clean up path at some point, it gets dirty really fast, collecting a lot of /src/../src
-                    file_dialog_context.current_path.push(&file);
+                    let new_path = file_dialog_context.current_path.join(&file);
+                    file_dialog_context.current_path = clean_path(&new_path);
                 } else {
                     icon_server.load_icon(get_image_from_path(&path));
                     *textures_dirty = true;
@@ -530,6 +535,28 @@ fn update_file_dialog_mouse_events(
         height: (file_names.len() as i32 * TEXT_SIZE + TEXT_SIZE * 2 + TEXT_PADDING * 4) as f32,
     };
     mouse_context.over_file_dialog = file_dialog_rec.check_collision_point_rec(mouse_context.mouse_pos);
+}
+
+fn clean_path(path: &Path) -> PathBuf {
+    // doesn't (or can't) handle the case where you leave the "." folder then enter back into it.
+    // Also no symlinks
+
+    let mut sections: Vec<_> = path.to_str().unwrap().split("/").collect();
+    
+    // remove "dir/../"
+    let mut i = 1;
+    while i < sections.len() {
+        if sections[i] == ".." && sections[i - 1] != "." {
+            sections.remove(i);
+            sections.remove(i - 1);
+            i -= 1;
+        } else {
+            i += 1
+        }
+    }
+
+    // reconstruct
+    return PathBuf::from(sections.join("/"));
 }
 
 fn update_pallet_mouse_events(
