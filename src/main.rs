@@ -242,30 +242,31 @@ fn main() {
             let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
 
             let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
-            
+            let padding_rec = pad_rectangle(rec, HIGHLIGHT_PADDING);
+
             // Default and selected highlighting
             let is_default = icon_server.get_default_name() == name;
+            let is_selected = icon_server.get_selected_name() == name;
+
+
             if is_default {
-                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), PALLET_DEFAULT_COLOR);
-            }
-                
-            let is_selected = icon_server.get_selected_name() == name; 
+                d.draw_rectangle_rec(padding_rec, PALLET_DEFAULT_COLOR);
+            }    
             if is_selected {
-                let mut rec = pad_rectangle(rec, HIGHLIGHT_PADDING);
-                if is_default { rec.width /= 2.0; }
-                d.draw_rectangle_rec(rec, PALLET_SELECTED_COLOR);
+                let mut padding_rec = padding_rec;
+                if is_default { padding_rec.width /= 2.0; }
+                d.draw_rectangle_rec(padding_rec, PALLET_SELECTED_COLOR);
             }
 
             if *mouse_context.hovering_over_pallet.get(i).unwrap_or(&false) {
                 if is_default || is_selected {
-                    let pad_rec = pad_rectangle(rec, HIGHLIGHT_PADDING);
                     let top_stripe = Rectangle {
-                        x: pad_rec.x + pad_rec.width / 3.0,  y: pad_rec.y,
-                        width: pad_rec.width / 3.0,          height: pad_rec.height,
+                        x: padding_rec.x + padding_rec.width / 3.0,  y: padding_rec.y,
+                        width: padding_rec.width / 3.0,              height: padding_rec.height,
                     };
                     let middle_stripe = Rectangle {
-                        x: pad_rec.x,                        y: pad_rec.y + pad_rec.height / 3.0,
-                        width: pad_rec.width,                height: pad_rec.height / 3.0,
+                        x: padding_rec.x,                            y: padding_rec.y + padding_rec.height / 3.0,
+                        width: padding_rec.width,                    height: padding_rec.height / 3.0,
                     };
                     d.draw_rectangle_rec(top_stripe, HIGHLIGHT_COLOR);
                     d.draw_rectangle_rec(middle_stripe, HIGHLIGHT_COLOR);
