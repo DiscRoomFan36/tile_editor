@@ -257,6 +257,7 @@ pub struct PanelUiDragContext {
 impl PanelUiDragContext {
 	pub fn new(position: Vector2) -> Self {
 		Self {
+			is_draggable: true, // if your making this yourself, probably
 			position,
 			..Self::default()
 		}
