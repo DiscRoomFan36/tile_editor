@@ -19,12 +19,14 @@ type Rectangle = raylib::math::Rectangle;
 
 #[derive(Debug)]
 pub struct PanelUi {
-	position: Vector2,
+	drag_context: PanelUiDragContext,
+
+	// position: Vector2,
 	width: i32,
 	height: i32,
 
-	is_draggable: bool,
-	is_dragging: bool,
+	// is_draggable: bool,
+	// is_dragging: bool,
 
 	default_text_height: i32,
 	text_padding: i32,
@@ -45,40 +47,8 @@ pub struct PanelUi {
 // when asked for, tell if mouse is over something
 
 impl PanelUi {
-	// TODO: accept more arguments, or not. rust doesn't have defaults so it sucks
-	pub fn new(position: Vector2, text_padding: i32) -> Self {
-		PanelUi {
-			position,
-			width: text_padding * 2,
-			height: text_padding * 2,
+	// TODO: make more new functions. rust doesn't have defaults so it sucks
 
-			is_draggable: false,
-			is_dragging: false,
-
-			default_text_height: 20,
-			text_padding,
-
-			item_padding: 5,
-
-			text_array: vec![],
-			text_width_array: vec![],
-			text_height_array: vec![],
-
-			background_color: Color::YELLOW,
-			text_color: Color::RED,
-			hover_color: Color::ORANGE,
-		}
-	}
-
-	#[allow(dead_code)]
-	pub fn new_draggable(text_padding: i32, dragging_context: PanelUiDragContext) -> Self {
-		PanelUi {
-			position: dragging_context.position,
-			is_draggable: true,
-			is_dragging: dragging_context.is_dragging,
-			..Self::new(dragging_context.position, text_padding)
-		}
-	}
 	
 	#[allow(dead_code)]
 	pub fn add_text_button(&mut self, text: &str, text_width: i32) {
@@ -120,8 +90,8 @@ impl PanelUi {
 	
 	#[allow(dead_code)]
 	pub fn get_hovered_id(&self, mouse_context: &MouseContext) -> Option<usize> {
-		let mut xx = self.position.x as i32;
-		let mut yy = self.position.y as i32;
+		let mut xx = self.drag_context.position.x as i32;
+		let mut yy = self.drag_context.position.y as i32;
 
 		xx += self.text_padding; // indent for text
 		yy += self.text_padding; // indent for backing padding
@@ -161,26 +131,38 @@ impl PanelUi {
 }
 
 impl PanelLike for PanelUi {
-	fn as_rec(&self) -> Rectangle {
-		Rectangle {
-			x: self.position.x,
-			y: self.position.y,
-			width: self.width as f32,
-			height: self.height as f32,
+	fn new() -> Self {
+		let text_padding = 20;
+		Self {
+			drag_context: PanelUiDragContext::default(),
+
+			width: text_padding * 2,
+			height: text_padding * 2,
+
+			default_text_height: 20,
+			text_padding,
+
+			item_padding: 5,
+
+			text_array: vec![],
+			text_width_array: vec![],
+			text_height_array: vec![],
+
+			background_color: Color::YELLOW,
+			text_color: Color::RED,
+			hover_color: Color::ORANGE,
 		}
+	}
+	fn new_draggable(drag_context: PanelUiDragContext) -> Self {
+		Self { drag_context, ..Self::new() }
 	}
 
-	fn get_drag_context(&self) -> PanelUiDragContext {
-		PanelUiDragContext {
-			is_draggable  : self.is_draggable,
-			position      : self.position,
-			is_dragging   : self.is_dragging,
-		}
-	}
+	fn width(&self)  -> f32 { self.width  as f32 }
+	fn height(&self) -> f32 { self.height as f32 }
+
+	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context.clone() }
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
-		self.is_draggable = drag_context.is_draggable;
-		self.position     = drag_context.position;
-		self.is_dragging  = drag_context.is_dragging;
+		self.drag_context = drag_context;
 	}
 
 	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
@@ -268,39 +250,16 @@ pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
 
 
 
-// Panel that has an array of panels, and draws them
-// (on top of each other?)
-
+// Panel that has an array of panels, and draws them in a colum
+// ignores all other positions on child panels
 pub struct PanelPanel {
-	position: Vector2, // panel has its own position, and all child panels are relative coordinates
-
-	is_draggable: bool,
-	is_dragging: bool,
+	drag_context: PanelUiDragContext,
 
 	panel_array: Vec<PanelUi>,
 	panel_draggable_array: Vec<bool>,
 }
 
 impl PanelPanel {
-	pub fn new(position: Vector2) -> Self {
-		Self {
-			position,
-
-			is_draggable: false,
-			is_dragging: false,
-
-			panel_array: vec![],
-			panel_draggable_array: vec![],
-		}
-	}
-	pub fn new_draggable(dragging_context: PanelUiDragContext) -> Self {
-		Self {
-			is_draggable: true,
-			is_dragging: dragging_context.is_dragging,
-			..Self::new(dragging_context.position)
-		}
-	}
-
 	pub fn add_panel(&mut self, new_panel: PanelUi, is_draggable: bool) {
 		self.panel_array.push(new_panel);
 		self.panel_draggable_array.push(is_draggable);
@@ -324,26 +283,27 @@ impl PanelPanel {
 }
 
 impl PanelLike for PanelPanel {
-	fn as_rec(&self) -> Rectangle {
-		Rectangle {
-			x: self.position.x,
-			y: self.position.y,
-			width : self.panel_array.iter().map(|panel| panel.width ).max().unwrap_or(0) as f32,
-			height: self.panel_array.iter().map(|panel| panel.height).sum::<i32>() as f32,
+	fn new() -> Self {
+		Self {
+			drag_context: PanelUiDragContext::default(),
+			panel_array: vec![],
+			panel_draggable_array: vec![],
 		}
+	}
+	fn new_draggable(drag_context: PanelUiDragContext) -> Self {
+		Self { drag_context, ..Self::new() }
 	}
 
-	fn get_drag_context(&self) -> PanelUiDragContext {
-		PanelUiDragContext {
-			is_draggable  : self.is_draggable,
-			position      : self.position,
-			is_dragging   : self.is_dragging,
-		}
+	fn width(&self)  -> f32 {
+		self.panel_array.iter().map(|panel| panel.width ).max().unwrap_or(0) as f32
 	}
+	fn height(&self) -> f32 {
+		self.panel_array.iter().map(|panel| panel.height).sum::<i32>() as f32
+	}
+
+	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context.clone() }
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
-		self.is_draggable = drag_context.is_draggable;
-		self.position     = drag_context.position;
-		self.is_dragging  = drag_context.is_dragging;
+		self.drag_context = drag_context;
 	}
 
 	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
@@ -356,7 +316,7 @@ impl PanelLike for PanelPanel {
 		for i in 0..self.panel_array.len() {
 			let panel = &self.panel_array[i];
 			
-			assert!(panel.is_draggable == false); // this panel doesn't handle this
+			assert!(panel.drag_context.is_draggable == false); // this panel doesn't handle this
 			
 			let tmp      = position;
 			position.y           += panel.height as f32;
@@ -401,22 +361,40 @@ impl PanelLike for PanelPanel {
 
 
 pub trait PanelLike {
+	// creates a default panel, panel will probably have more in
+	// depth versions of these
+	fn new() -> Self;
+	fn new_draggable(drag_context: PanelUiDragContext) -> Self;
 
-	// meh, wish we could do better than setters
-	// and getters, feels too oop
+	fn width(&self)  -> f32;
+	fn height(&self) -> f32;
+
+	// meh, wish we could do better than getters
+	// and setters, feels too oop
 	// any smart compiler would optimize this out, is rust smart? 
 	fn get_position(&self) -> Vector2 {
 		self.get_drag_context().position
 	}
 	// fn set_position(&mut self) -> Vector2;
 
-	// for bounding box purposes
-	fn as_rec(&self) -> Rectangle;
-
+	// kinda necessary setter and getter. 
 	fn get_drag_context(&self) -> PanelUiDragContext;
 	// so we can auto impl some stuff
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext);
 	
+
+
+	// for bounding box purposes
+	fn as_rec(&self) -> Rectangle {
+		let position = self.get_position();
+		Rectangle {
+			x      : position.x,
+			y      : position.y,
+			width  : self.width(),
+			height : self.height(),
+		}
+	}
+
 	fn mouse_over_panel(&self, mouse_context: &MouseContext) -> bool {
 		self.mouse_over_panel_at(mouse_context, self.get_position())
 	}

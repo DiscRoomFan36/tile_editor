@@ -395,7 +395,7 @@ fn main() {
 
 
         {
-            let mut a = PanelUi::new(Vector2::default(), 20);
+            let mut a = PanelUi::new();
 
             a.add_text_button_by_d("Drag Me", &mut d);
 
@@ -405,7 +405,7 @@ fn main() {
         }
 
         {
-            let mut b = PanelUi::new(Vector2::default(), 20);
+            let mut b = PanelUi::new();
 
             let list = vec!["There", "are", "69,502", "leaves"];
 
@@ -415,7 +415,7 @@ fn main() {
         }
 
         {
-            let mut c = PanelUi::new(Vector2::default(), 20);
+            let mut c = PanelUi::new();
 
             c.add_text_button_by_d("Drag Me 2", &mut d);
 
