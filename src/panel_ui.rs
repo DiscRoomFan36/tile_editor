@@ -70,28 +70,13 @@ impl PanelUi {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn new_draggable(text_padding: i32, dragging_context: PanelUiDragContext) -> Self {
 		PanelUi {
 			position: dragging_context.position,
 			is_draggable: true,
 			is_dragging: dragging_context.is_dragging,
 			..Self::new(dragging_context.position, text_padding)
-		}
-	}
-
-	pub fn get_drag_context(&self) -> PanelUiDragContext {
-		PanelUiDragContext {
-			position: self.position,
-			is_dragging: self.is_dragging,
-		}
-	}
-
-	pub fn as_rec(&self) -> Rectangle {
-		Rectangle {
-			x: self.position.x,
-			y: self.position.y,
-			width: self.width as f32,
-			height: self.height as f32,
 		}
 	}
 	
@@ -130,33 +115,8 @@ impl PanelUi {
 			self.add_text_button_by_d(text, d);
 		}
 	}
-	// TODO Rest
+	// TODO Rest of add text buttons
 
-	#[allow(dead_code)]
-	pub fn mouse_over_panel(&self, mouse_context: &MouseContext) -> bool {
-		point_rec_collision(mouse_context.mouse_pos, self.as_rec())
-	}
-	
-	// TODO: do something to help with dragging
-	// TODO: need more time to do this, need to pass in extra info for this 
-	pub fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
-		if self.is_draggable == false {
-			panic!("Panel isn't draggable by default, use different constructor")
-		}
-
-		if self.mouse_over_panel(mouse_context) && mouse_context.mouse_left_pressed {
-			self.is_dragging = true;
-		}
-
-		if self.is_dragging {
-			self.position += mouse_context.mouse_delta;
-			if mouse_context.mouse_left_released {
-				self.is_dragging = false;
-			}
-		}
-
-		return self.get_drag_context();
-	}
 	
 	#[allow(dead_code)]
 	pub fn get_hovered_id(&self, mouse_context: &MouseContext) -> Option<usize> {
@@ -194,14 +154,66 @@ impl PanelUi {
 	#[allow(dead_code)]
 	pub fn get_hovered(&self, mouse_context: &MouseContext) -> Option<&str> {
 		let index = self.get_hovered_id(mouse_context)?;
-
 		return Some(&self.text_array[index]);
 	}
 
-	// consume self here, should only dray once, clone if required
-	pub fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext) {
-		let mut xx = self.position.x as i32;
-		let mut yy = self.position.y as i32;
+
+}
+
+impl PanelLike for PanelUi {
+	fn as_rec(&self) -> Rectangle {
+		Rectangle {
+			x: self.position.x,
+			y: self.position.y,
+			width: self.width as f32,
+			height: self.height as f32,
+		}
+	}
+
+	fn get_drag_context(&self) -> PanelUiDragContext {
+		PanelUiDragContext {
+			is_draggable: self.is_draggable,
+			position: self.position,
+			is_dragging: self.is_dragging,
+		}
+	}
+
+	fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
+		let drag_context = self.do_dragging_at(mouse_context, self.get_drag_context());
+
+		self.position = drag_context.position;
+		self.is_dragging = drag_context.is_dragging;
+
+		return drag_context;
+	}
+	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
+		if drag_context.is_draggable == false {
+			panic!("Panel isn't draggable")
+		}
+
+		if self.mouse_over_panel_at(mouse_context, drag_context.position) && mouse_context.mouse_left_pressed {
+			drag_context.is_dragging = true;
+		}
+
+		if drag_context.is_dragging {
+			drag_context.position += mouse_context.mouse_delta;
+			if mouse_context.mouse_left_released {
+				drag_context.is_dragging = false;
+			}
+		}
+
+		return drag_context;
+	}
+
+
+	// consume self here, should only draw once, clone if required
+	fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext) {
+		let position = self.position;
+		self.draw_panel_at(d, mouse_context, position)
+	}
+	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+		let mut xx = position.x as i32;
+		let mut yy = position.y as i32;
 
 		d.draw_rectangle(xx, yy, self.width, self.height, self.background_color);
 
@@ -226,6 +238,7 @@ impl PanelUi {
 				d.draw_rectangle_rec(padded, self.hover_color);
 			}
 
+			// TODO: center text by some sort of anchor
 			d.draw_text(&text, xx, yy, height, self.text_color);
 			yy += height;
 			yy += self.item_padding;
@@ -233,9 +246,10 @@ impl PanelUi {
 	}
 }
 
-// maybe have text padding?
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct PanelUiDragContext {
+	is_draggable: bool, // because were going to be passing this around a lot
+
 	position: Vector2,
 	is_dragging: bool,
 }
@@ -295,14 +309,7 @@ impl PanelPanel {
 		}
 	}
 
-	pub fn get_drag_context(&self) -> PanelUiDragContext {
-		PanelUiDragContext {
-			position: self.position,
-			is_dragging: self.is_dragging,
-		}
-	}
-
-	pub fn add_panel(&mut self, mut new_panel: PanelUi, is_draggable: bool) {
+	pub fn add_panel(&mut self, new_panel: PanelUi, is_draggable: bool) {
 		self.panel_array.push(new_panel);
 		self.panel_draggable_array.push(is_draggable);
 	}
@@ -322,76 +329,130 @@ impl PanelPanel {
 			panel.width = max_width;
 		}
 	}
+}
 
-	// this finds the things that are draggable and calls do_dragging on them
-	// this needs to do something with a context
-	// TODO
-
-	// this panel panel will return a drag context that is for itself,
-	// so that any part that drags, will drag the whole panel,
-	// need to make another thing that dose sort of the same thing, but 
-	// is more of a window in window deal
-	pub fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
-		assert!(self.is_draggable);
-
-		let mut yy = 0.0;
-		
-		for i in 0..self.panel_array.len() {
-			let panel = &mut self.panel_array[i];
-			
-			assert!(panel.is_draggable == false); // this might get weird. soft todo
-			
-			let tmp = yy;
-			yy          += panel.height as f32;
-			let yy  = tmp;
-
-			if !self.panel_draggable_array[i] { continue; }
-			
-			
-
-			let tmp = panel.position;
-			panel.position += self.position;
-			panel.position.y += yy;
-
-			// duplicate code.
-			// maybe make a function on PanelUi that accepts a DragContext,
-			// and returns a new one, because all we really need from it is its width
-			if panel.mouse_over_panel(mouse_context) && mouse_context.mouse_left_pressed {
-				self.is_dragging = true;
-			}
-
-			if self.is_dragging {
-				self.position += mouse_context.mouse_delta;
-				if mouse_context.mouse_left_released {
-					self.is_dragging = false;
-				}
-				panel.position = tmp;
-				break;
-			}
-
-			panel.position = tmp;
+impl PanelLike for PanelPanel {
+	fn as_rec(&self) -> Rectangle {
+		Rectangle {
+			x: self.position.x,
+			y: self.position.y,
+			width : self.panel_array.iter().map(|panel| panel.width ).max().unwrap_or(0) as f32,
+			height: self.panel_array.iter().map(|panel| panel.height).sum::<i32>() as f32,
 		}
-
-		// TODO: handle panels that are draggable in there own way.
-
-		return self.get_drag_context();
 	}
 
-	// hmmm it doesn't make sense to add stuff to the start
-	// position here, if were just going to try and make
-	// them into a list of sorts and put them one below the other.
-	// @Cleanup?
-	pub fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext) {
-		let mut yy = self.position.y as i32;
-		for mut panel in self.panel_array.into_iter() {
-			panel.position.x += self.position.x;
-			panel.position.y += yy as f32;
-			
-			yy += panel.height;
+	fn get_drag_context(&self) -> PanelUiDragContext {
+		PanelUiDragContext {
+			is_draggable: self.is_draggable,
+			position: self.position,
+			is_dragging: self.is_dragging,
+		}
+	}
 
-			panel.draw_panel(d, mouse_context);
+	fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
+		let drag_context = self.do_dragging_at(mouse_context, self.get_drag_context());
+
+		self.position = drag_context.position;
+		self.is_dragging = drag_context.is_dragging;
+
+		return drag_context;
+	}
+	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
+		if drag_context.is_draggable == false {
+			panic!("Panel isn't draggable")
+		}
+	
+		let mut position = drag_context.position;
+		
+		for i in 0..self.panel_array.len() {
+			let panel = &self.panel_array[i];
+			
+			assert!(panel.is_draggable == false); // this panel doesn't handle this
+			
+			let tmp      = position;
+			position.y           += panel.height as f32;
+			
+			if !self.panel_draggable_array[i] { continue; }
+			
+			let position = tmp;
+	
+			let panel_drag_context = PanelUiDragContext {
+				is_draggable: drag_context.is_draggable,
+				position,
+				is_dragging: drag_context.is_dragging,
+			};
+
+			let new_drag = panel.do_dragging_at(mouse_context, panel_drag_context.clone());
+
+			// I don't think this is technically correct, but, it 'fails correctly'
+			// the reason for the double drag is because new drag is false, and it still
+			// passes the old drag to the next function. this could be explained better 
+			if new_drag != panel_drag_context {
+				drag_context.position += new_drag.position - panel_drag_context.position;
+				drag_context.is_dragging = new_drag.is_dragging;
+
+				break; // dragging does twice as fast when you don't break?
+			}
+		}
+	
+		return drag_context;
+	}
+
+	fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext) {
+		let position = self.position;
+		self.draw_panel_at(d, mouse_context, position)
+	}
+	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+		let mut position = position;
+		for panel in self.panel_array.into_iter() {
+			let height = panel.height;
+
+			panel.draw_panel_at(d, mouse_context, position);
+			position.y += height as f32;
 		}
 	}
 }
 
+
+
+pub trait PanelLike {
+
+	// meh, wish we could do better than setters
+	// and getters, feels too oop
+	// any smart compiler would optimize this out, is rust smart? 
+	fn get_position(&self) -> Vector2 {
+		self.get_drag_context().position
+	}
+	// fn set_position(&mut self) -> Vector2;
+
+	// some new function
+
+	// some add function
+
+	// for bounding box purposes
+	fn as_rec(&self) -> Rectangle;
+
+	fn get_drag_context(&self) -> PanelUiDragContext;
+
+	fn mouse_over_panel(&self, mouse_context: &MouseContext) -> bool {
+		self.mouse_over_panel_at(mouse_context, self.get_position())
+	}
+	fn mouse_over_panel_at(&self, mouse_context: &MouseContext, position: Vector2) -> bool {
+		let rec = Rectangle {
+    		x: position.x,
+			y: position.y,
+			..self.as_rec()
+		};
+
+		return point_rec_collision(mouse_context.mouse_pos, rec);
+	}
+	
+	// handle mouse dragging
+	fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext;
+	fn do_dragging_at(&self, mouse_context: &MouseContext, drag_context: PanelUiDragContext) -> PanelUiDragContext;
+
+	// consume self here, should only dray once, clone if required
+	fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext);
+	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2);
+}
 
