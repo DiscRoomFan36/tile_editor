@@ -1,8 +1,10 @@
 mod tile_grid;
 mod icon_server;
+mod panel_ui;
 
 use tile_grid::*;
 use icon_server::*;
+use panel_ui::*;
 
 use std::fs;
 use std::io::{Read, Write};
@@ -57,6 +59,7 @@ struct ImageContainer {
     texture: Option<Texture2D>,
 }
 
+#[derive(Debug)]
 struct MouseContext {
     mouse_pos   :  Vector2,
     mouse_delta : Vector2,
@@ -110,6 +113,18 @@ fn main() {
 
     // let dirty = true; // TODO: refactor for this
     let mut textures_dirty = true;
+
+    // TESTING
+    // TESTING
+    // TESTING
+    // TESTING
+    // let mut a_drag_context = PanelUiDragContext::new(Vector2::new(100.0, 100.0));
+
+    let mut panel_drag = PanelUiDragContext::new(Vector2::new(300.0, 100.0));
+    // TESTING
+    // TESTING
+    // TESTING
+    // TESTING
 
     /* -------------------- EVENT LOOP -------------------- */
     while !rl.window_should_close() {
@@ -352,6 +367,69 @@ fn main() {
                 // yy += TEXT_SIZE + TEXT_PADDING;
             }
         }
+    
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+        // Testing new ui thing here
+
+        // let mut a = PanelUi::new(Vector2::new(100.0, 50.0), 20);
+
+        // let mut a = PanelUi::new_draggable(20, a_drag_context);
+
+        // let list = vec!["There", "are", "69,502", "leaves"];
+
+        // a.add_text_buttons_by_d(&list, &mut d);
+
+        // a_drag_context = a.do_dragging(&mouse_context);
+
+        // a.draw_panel(&mut d, &mouse_context);
+
+        let mut panel_panel = PanelPanel::new_draggable(panel_drag);
+
+
+        {
+            let mut a = PanelUi::new(Vector2::default(), 20);
+
+            a.add_text_button_by_d("Drag Me", &mut d);
+
+            a.background_color = Color::REBECCAPURPLE;
+
+            panel_panel.add_panel(a, true);
+        }
+
+        {
+            let mut b = PanelUi::new(Vector2::default(), 20);
+
+            let list = vec!["There", "are", "69,502", "leaves"];
+
+            b.add_text_buttons_by_d(&list, &mut d);
+
+            panel_panel.add_panel(b, false);
+        }
+
+        {
+            let mut c = PanelUi::new(Vector2::default(), 20);
+
+            c.add_text_button_by_d("Drag Me 2", &mut d);
+
+            c.background_color = Color::REBECCAPURPLE;
+
+            panel_panel.add_panel(c, true);
+        }
+
+
+        panel_panel.equalize_widths();
+
+        panel_drag = panel_panel.do_dragging(&mouse_context);
+
+        panel_panel.draw_panel(&mut d, &mouse_context);
     }
 }
 

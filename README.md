@@ -2,9 +2,9 @@
 
 Just a Tile Editor, after I get down the basics, (see [todo's](#todos)), want to add extra features that I would want in a tile editor, (adding notes to tiles on the grid, adding notes to the tiles themselves, ect)
 
-The "Ethos" of this project, is that you make your tile edited thing in this program, and then when you save it, it's in a both: easily readable for humans format, and easily parsable for programmers format. aka why I use json.
+The "Ethos" of this project, is that you make your tile edited thing in this program, and then when you save it, it's in a both: easily readable for humans format, and easily parsable for programmers format.
 
-If you need a more compressed format, make a build pipeline.
+If you need a more compressed format, do it yourself.
 
 ## Quick Start
 
@@ -25,12 +25,12 @@ $ cargo run
 
 ### For small extensions:
 
+- Make my own file format
 - Be Able to add new icons to tile_editor
 - Be able to change the size of the tiles in editor. (Zoom out with camera?)
 - Make the editor state part of the saved grid json? (might just be for quick saves)
 - Better save paths, (maybe keep the quick-save though)
 - Add Load method that isn't quick-save
-- Make saves pretty-printed, for readability
 - Make a good ui
 - More marks at the edges of the grid to mark where a tile is.
 - Make the pallet be separated by folders, and stop it from crashing when loading something bad.
