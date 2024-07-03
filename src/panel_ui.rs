@@ -1,6 +1,23 @@
 
 use raylib::prelude::*;
 
+
+pub trait CanMeasureText {
+	fn my_measure_text(&self, text: &str, font_size: i32) -> i32;
+}
+
+impl CanMeasureText for RaylibHandle {
+	fn my_measure_text(&self, text: &str, font_size: i32) -> i32 {
+		self.measure_text(text, font_size)
+	}
+}
+
+impl CanMeasureText for RaylibDrawHandle<'_> {
+	fn my_measure_text(&self, text: &str, font_size: i32) -> i32 {
+		self.measure_text(text, font_size)
+	}
+}
+
 // TODO: make this accept a drawable object?
 // the only two objects i have in mind are text and images
 // i could even just impl those cases in this file
@@ -9,6 +26,26 @@ use crate::{pad_rectangle_ex, MouseContext};
 
 type Vector2 = raylib::math::Vector2;
 type Rectangle = raylib::math::Rectangle;
+
+
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
+pub struct PanelUiDragContext {
+	pub is_draggable: bool, // because were going to be passing this around a lot
+
+	pub position: Vector2,
+	pub is_dragging: bool,
+}
+
+impl PanelUiDragContext {
+	pub fn new(position: Vector2) -> Self {
+		Self {
+			is_draggable: true, // if your making this yourself, probably
+			position,
+			..Self::default()
+		}
+	}
+}
+
 
 // Lets think here, do i want to have a full context thing
 // that you make a thing out of, maybe, but that feels a little bad
@@ -48,16 +85,8 @@ pub struct TextPanel {
 impl TextPanel {
 	// TODO: make more new functions. rust doesn't have defaults so it sucks
 
-	#[allow(dead_code)]
-	pub fn add_text_button(&mut self, text: &str, text_width: i32) {
-		self.add_text_button_ex(text, text_width, self.default_text_height)
-	}
-	pub fn add_text_button_by_d(&mut self, text: &str, d: &mut RaylibDrawHandle) {
-		self.add_text_button_ex(text, d.measure_text(text, self.default_text_height), self.default_text_height)
-	}
-	#[allow(dead_code)]
-	pub fn add_text_button_by_rl(&mut self, text: &str, rl: &mut RaylibHandle) {
-		self.add_text_button_ex(text, rl.measure_text(text, self.default_text_height), self.default_text_height)
+	pub fn add_text_button(&mut self, text: &str, rl: &mut impl CanMeasureText) {
+		self.add_text_button_ex(text, rl.my_measure_text(text, self.default_text_height), self.default_text_height)
 	}
 
 	pub fn add_text_button_ex(&mut self, text: &str, text_width: i32, text_height: i32) {
@@ -78,14 +107,11 @@ impl TextPanel {
 		}
 	}
 
-	#[allow(dead_code)]
-	pub fn add_text_buttons_by_d(&mut self, text_array: &[&str], d: &mut RaylibDrawHandle) {
+	pub fn add_text_buttons(&mut self, text_array: &[&str], rl: &mut impl CanMeasureText) {
 		for text in text_array {
-			self.add_text_button_by_d(text, d);
+			self.add_text_button(text, rl);
 		}
 	}
-	// TODO Rest of add text buttons
-
 	
 	
 	// tells me what text button its over and returns it.
@@ -227,23 +253,6 @@ impl PanelLike for TextPanel {
 	}
 }
 
-#[derive(Debug, Default, PartialEq, Clone, Copy)]
-pub struct PanelUiDragContext {
-	pub is_draggable: bool, // because were going to be passing this around a lot
-
-	pub position: Vector2,
-	pub is_dragging: bool,
-}
-
-impl PanelUiDragContext {
-	pub fn new(position: Vector2) -> Self {
-		Self {
-			is_draggable: true, // if your making this yourself, probably
-			position,
-			..Self::default()
-		}
-	}
-}
 
 // check weather a point is in a rectangle
 pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {

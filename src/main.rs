@@ -1,14 +1,16 @@
 mod tile_grid;
 mod icon_server;
 mod panel_ui;
+mod file_dialog;
 
 use tile_grid::*;
 use icon_server::*;
 use panel_ui::*;
+use file_dialog::*;
 
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
 use raylib::prelude::*;
 use raylib::consts::{KeyboardKey, MouseButton};
@@ -30,7 +32,6 @@ const PALLET_PER_ROW : usize = 3;
 const TEXT_SIZE    : i32 = 30;
 const TEXT_PADDING : i32 = 10;
 
-const FILE_DIALOG_SELECT_FOLDER_TEXT : &str = "Select Folder";
 
 const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
 
@@ -41,18 +42,7 @@ const PALLET_SELECTED_COLOR                 : Color = Color::RED;
 const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
 const PALLET_TEXTURE_TINT                   : Color = GRID_TEXTURE_TINT;
 
-const FILE_DIALOG_CURRENT_FOLDER_COLOR      : Color = Color::MAROON;
-const FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR : Color = Color::GOLDENROD;
-const FILE_DIALOG_BACKING_BOX_COLOR         : Color = Color::DARKGRAY;
 
-const FILE_DIALOG_LABEL_HOVER_COLOR         : Color = Color::ORANGE;
-const FILE_DIALOG_LABEL_TEXT_COLOR          : Color = Color::GOLD;
-
-const FILE_DIALOG_SELECT_BACKING_COLOR      : Color = Color::GREEN;
-const FILE_DIALOG_SELECT_HOVER_COLOR        : Color = Color::WHEAT;
-const FILE_DIALOG_SELECT_TEXT_COLOR         : Color = Color::BLACK;
-
-const FILE_DIALOG_START_POSITION : Vector2 = Vector2 { x: 100.0, y: 100.0 };
 
 struct ImageContainer {
     image: Image,
@@ -73,17 +63,6 @@ struct MouseContext {
     over_file_dialog : bool,
 }
 
-struct FileDialogContext {
-    is_open: bool,
-    current_path: PathBuf,
-    // width: i32,
-    // menu_position: Vector2,
-    // is_dragging: bool,
-    // menu_started_dragging_position: Vector2,
-
-    drag_context: PanelUiDragContext,
-}
-
 fn main() {
     let assets = get_images_from_path(Path::new(PATH));
 
@@ -101,16 +80,7 @@ fn main() {
     
     rl.set_target_fps(60);
     
-    let mut file_dialog_context = FileDialogContext {
-        is_open: false,
-        current_path: ".".into(),
-        // width: rl.measure_text(FILE_DIALOG_SELECT_FOLDER_TEXT, TEXT_SIZE) + TEXT_PADDING * 2,
-        // menu_position: FILE_DIALOG_START_POSITION,
-        // is_dragging: false,
-        // menu_started_dragging_position: Vector2::zero(),
-
-        drag_context: PanelUiDragContext::new(FILE_DIALOG_START_POSITION),
-    };
+    let mut file_dialog_context = FileDialogContext::new();
 
 
     // let dirty = true; // TODO: refactor for this
@@ -182,6 +152,7 @@ fn main() {
 
                 if file_dialog_context.drag_context.position.x > WINDOW_WIDTH  as f32 || file_dialog_context.drag_context.position.x < 0.0
                 || file_dialog_context.drag_context.position.y > WINDOW_HEIGHT as f32 || file_dialog_context.drag_context.position.y < 0.0 {
+                    // TODO: do something about this
                     file_dialog_context.drag_context.position = FILE_DIALOG_START_POSITION;
                 }
             }
@@ -201,8 +172,17 @@ fn main() {
             over_file_dialog : false,
         };
         
-        // Must be called first
-        // update_file_dialog_mouse_events(&rl, &mut file_dialog_context, &mut mouse_context, &mut icon_server, &mut textures_dirty);
+        // don't need to check if open, dose that automatically 
+        let new_image = file_dialog_context.update(&mouse_context, &mut rl);
+        if let Some(path) = new_image {
+            // TODO: this should be simpler
+            if path.is_dir() {
+                icon_server.load_icons(&mut get_images_from_path(&path));
+            } else {
+                icon_server.load_icon(get_image_from_path(&path));
+            }
+            textures_dirty = true; // Remember to call when adding images
+        }
 
         update_pallet_mouse_events(&mut mouse_context, &mut icon_server);
 
@@ -223,6 +203,7 @@ fn main() {
         
         /* -------------------- DRAWING -------------------- */
         let mut d = rl.begin_drawing(&thread);
+
 
         d.clear_background(BACKGROUND_COLOR);
 
@@ -300,66 +281,10 @@ fn main() {
 
         /* -------------------- FILE DIALOG -------------------- */
     
-        // Testing new ui thing here
-        // Testing new ui thing here
-        // Testing new ui thing here
-        
-
-        if file_dialog_context.is_open {
-            let mut file_dialog_panel = PanelColumn::new_draggable(file_dialog_context.drag_context);
-
-            let mut header = TextPanel::new();
-            header.add_text_button_by_d(file_dialog_context.current_path.to_str().unwrap(), &mut d);
-            file_dialog_panel.add_panel(header, true);
-
-            let mut file_list = TextPanel::new();
-            let file_names = list_directory(&file_dialog_context.current_path);
-            // Hack.
-            let v: Vec<&str> = file_names.iter().map(|x| x.as_ref()).collect();
-            file_list.add_text_buttons_by_d(&v, &mut d);
-            file_dialog_panel.add_panel(file_list, false);
-
-            let mut select_folder_button = TextPanel::new();
-            select_folder_button.add_text_button_by_d(FILE_DIALOG_SELECT_FOLDER_TEXT, &mut d);
-            file_dialog_panel.add_panel(select_folder_button, false);
-
-            file_dialog_context.drag_context = file_dialog_panel.do_dragging(&mouse_context);
-
-            if mouse_context.mouse_left_pressed {
-                let hovered = file_dialog_panel.get_hovered_id_recursively(&mouse_context);
-
-                // handle switch folders,
-                if hovered.get(0) == Some(&1) {
-                    if let Some(i) = hovered.get(1) {
-                        let file = &file_names[*i];
-                        let path = file_dialog_context.current_path.join(&file);
-            
-                        assert!(path.exists());
-                        if path.is_dir() {
-                            let new_path = file_dialog_context.current_path.join(&file);
-                            file_dialog_context.current_path = clean_path(&new_path);
-                        } else {
-                            icon_server.load_icon(get_image_from_path(&path));
-                            textures_dirty = true;
-                            
-                            file_dialog_context.is_open = false;
-                        }
-                    }
-                }
-
-                // handle select thing,
-                if hovered.get(0) == Some(&2) && hovered.len() == 2 {
-                    icon_server.load_icons(&mut get_images_from_path(&file_dialog_context.current_path));
-                    textures_dirty = true; // Remember to call when adding images
-        
-                    file_dialog_context.is_open = false; // Close it because we done here
-                }
-            }
-
-
-            // TODO: reload
-            file_dialog_panel.draw_panel(&mut d, &mouse_context)
-        }
+        // draw panel
+        file_dialog_context
+            .to_panel(&mut d)
+            .draw_panel(&mut d, &mouse_context);
     }
 }
 
@@ -423,55 +348,7 @@ fn get_images_from_path(path: &Path) -> Vec<(String, ImageContainer)> {
         .collect()
 }
 
-fn list_directory(path: &Path) -> Vec<String> {
-    let dir = fs::read_dir(path).expect("Path is valid");
-    let mut file_names: Vec<_> = dir
-        .map(|path| {
-            path.unwrap()
-                .file_name()
-                .into_string()
-                .unwrap()
-        })
-        .filter(|name| !name.starts_with(".")) // filter out hidden files
-        .filter(|name| {
-            if path.join(name).is_dir() { return true; }
-            // filter out things that aren't drawable (aka png's)
-            name.split_once(".")
-                .map(|(_, end)| end == "png")
-                .unwrap_or_default()
-        })
-        .collect();
 
-    file_names.reverse();
-
-    file_names.insert(0, "..".into());
-
-    // TODO: sort by type then name
-
-    file_names
-}
-
-fn clean_path(path: &Path) -> PathBuf {
-    // doesn't (or can't) handle the case where you leave the "." folder then enter back into it.
-    // Also no symlinks
-
-    let mut sections: Vec<_> = path.to_str().unwrap().split("/").collect();
-    
-    // remove "dir/../"
-    let mut i = 1;
-    while i < sections.len() {
-        if sections[i] == ".." && sections[i - 1] != "." {
-            sections.remove(i);
-            sections.remove(i - 1);
-            i -= 1;
-        } else {
-            i += 1
-        }
-    }
-
-    // reconstruct
-    return PathBuf::from(sections.join("/"));
-}
 
 fn update_pallet_mouse_events(
     mouse_context: &mut MouseContext,
