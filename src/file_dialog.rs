@@ -3,21 +3,23 @@ use std::path::{Path, PathBuf};
 
 use raylib::prelude::*;
 
-use crate::MouseContext;
+use crate::{MouseContext, TEXT_PADDING, TEXT_SIZE, ITEM_PADDING};
 
 use crate::panel_ui::*;
+
 
 
 const FILE_DIALOG_SELECT_FOLDER_TEXT : &str = "Select Folder";
 
 const FILE_DIALOG_CURRENT_FOLDER_COLOR      : Color = Color::MAROON;
 const FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR : Color = Color::GOLDENROD;
-const FILE_DIALOG_BACKING_BOX_COLOR         : Color = Color::DARKGRAY;
+
+const FILE_DIALOG_LABEL_BACKGROUND_COLOR    : Color = Color::DARKGRAY;
 
 const FILE_DIALOG_LABEL_HOVER_COLOR         : Color = Color::ORANGE;
 const FILE_DIALOG_LABEL_TEXT_COLOR          : Color = Color::GOLD;
 
-const FILE_DIALOG_SELECT_BACKING_COLOR      : Color = Color::GREEN;
+const FILE_DIALOG_SELECT_BACKGROUND_COLOR      : Color = Color::GREEN;
 const FILE_DIALOG_SELECT_HOVER_COLOR        : Color = Color::WHEAT;
 const FILE_DIALOG_SELECT_TEXT_COLOR         : Color = Color::BLACK;
 
@@ -50,12 +52,26 @@ impl FileDialogContext {
 
 		// TODO: color
 
-		let mut header = TextPanel::new();
+		let mut header = TextPanel::new_custom(
+			TEXT_SIZE,
+			TEXT_PADDING,
+			ITEM_PADDING,
+			FILE_DIALOG_CURRENT_FOLDER_COLOR,
+			FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR,
+			None
+		);
 		header.add_text_button(self.current_path.to_str().unwrap(), rl);
 		file_dialog_panel.add_panel(header, true);
 
 
-		let mut file_list = TextPanel::new();
+		let mut file_list = TextPanel::new_custom(
+			TEXT_SIZE,
+			TEXT_PADDING,
+			ITEM_PADDING,
+			FILE_DIALOG_LABEL_BACKGROUND_COLOR,
+			FILE_DIALOG_LABEL_TEXT_COLOR,
+			Some(FILE_DIALOG_LABEL_HOVER_COLOR)
+		);
 		let file_names = list_directory(&self.current_path);
 		// Hack.
 		let v: Vec<&str> = file_names.iter().map(<_>::as_ref).collect();
@@ -63,7 +79,14 @@ impl FileDialogContext {
 		file_dialog_panel.add_panel(file_list, false);
 
 
-		let mut select_folder_button = TextPanel::new();
+		let mut select_folder_button = TextPanel::new_custom(
+			TEXT_SIZE,
+			TEXT_PADDING,
+			ITEM_PADDING,
+			FILE_DIALOG_SELECT_BACKGROUND_COLOR,
+			FILE_DIALOG_SELECT_TEXT_COLOR,
+			Some(FILE_DIALOG_SELECT_HOVER_COLOR)
+		);
 		select_folder_button.add_text_button(FILE_DIALOG_SELECT_FOLDER_TEXT, rl);
 		file_dialog_panel.add_panel(select_folder_button, false);
 

@@ -29,8 +29,9 @@ const PATH            : &str = "./assets/icons";
 
 const PALLET_PER_ROW : usize = 3;
 
-const TEXT_SIZE    : i32 = 30;
+const TEXT_SIZE    : i32 = 20;
 const TEXT_PADDING : i32 = 10;
+const ITEM_PADDING: i32 = 4;
 
 
 const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;

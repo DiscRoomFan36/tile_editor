@@ -46,44 +46,44 @@ impl PanelUiDragContext {
 	}
 }
 
-
-// Lets think here, do i want to have a full context thing
-// that you make a thing out of, maybe, but that feels a little bad
-// for some reason. alternately, the programmer is going to make there own state
-// and if they want a menu then they just make their menu, maybe by a function
-// or a method, and they can store their own dam drag context. its their
-// problem
-
+#[derive(Debug)]
 pub struct TextPanel {
 	drag_context: PanelUiDragContext,
 
-	// position: Vector2,
 	width: i32,
 	height: i32,
 
-	// is_draggable: bool,
-	// is_dragging: bool,
+	// if your going to change these, do it immediately
+	pub default_text_height: i32,
+	pub text_padding: i32,
 
-	default_text_height: i32,
-	text_padding: i32,
-
-	item_padding: i32,
+	pub item_padding: i32,
 
 	text_array: Vec<String>,
 	text_width_array: Vec<i32>,
 	text_height_array: Vec<i32>,
 
-	// TODO: remove
 	pub background_color: Color,
-	text_color: Color,
-	hover_color: Color, // TODO: make optional
+	pub text_color: Color,
+	pub hover_color: Option<Color>, // TODO: make optional
 }
-
-// add text to thing
-// when asked for, tell if mouse is over something
 
 impl TextPanel {
 	// TODO: make more new functions. rust doesn't have defaults so it sucks
+	pub fn new_custom(text_height: i32, text_padding: i32, item_padding: i32, background_color: Color, text_color: Color, hover_color: Option<Color>) -> Self {
+		Self {
+			default_text_height: text_height,
+			text_padding,
+			item_padding,
+			background_color,
+			text_color,
+			hover_color,
+
+			height: text_padding * 2,
+
+			..Self::new()
+		}
+	}
 
 	pub fn add_text_button(&mut self, text: &str, rl: &mut impl CanMeasureText) {
 		self.add_text_button_ex(text, rl.my_measure_text(text, self.default_text_height), self.default_text_height)
@@ -128,7 +128,7 @@ impl PanelLike for TextPanel {
 		Self {
 			drag_context: PanelUiDragContext::default(),
 
-			width: text_padding * 2,
+			width: 0,
 			height: text_padding * 2,
 
 			default_text_height: 20,
@@ -142,7 +142,7 @@ impl PanelLike for TextPanel {
 
 			background_color: Color::YELLOW,
 			text_color: Color::RED,
-			hover_color: Color::ORANGE,
+			hover_color: Some(Color::ORANGE),
 		}
 	}
 	fn new_draggable(drag_context: PanelUiDragContext) -> Self {
@@ -155,10 +155,8 @@ impl PanelLike for TextPanel {
 	fn set_width (&mut self, width : f32) { self.width  = width  as i32 }
 	fn set_height(&mut self, height: f32) { self.height = height as i32	}
 
-	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
-	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
-		self.drag_context = drag_context;
-	}
+	fn get_drag_context(&self) -> PanelUiDragContext                 { self.drag_context }
+	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) { self.drag_context = drag_context; }
 
 	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
 		let mut xx = position.x as i32;
@@ -240,9 +238,11 @@ impl PanelLike for TextPanel {
 				height: height as f32
 			};
 
-			if point_rec_collision(mouse_context.mouse_pos, rec) {
-				let padded = pad_rectangle_ex(rec, (self.text_padding / 2) as f32, (self.text_padding / 2) as f32, 0.0, 0.0);
-				d.draw_rectangle_rec(padded, self.hover_color);
+			if let Some(hover_color) = self.hover_color {
+				if point_rec_collision(mouse_context.mouse_pos, rec) {
+					let padded = pad_rectangle_ex(rec, (self.text_padding / 2) as f32, (self.text_padding / 2) as f32, 0.0, 0.0);
+					d.draw_rectangle_rec(padded, hover_color);
+				}
 			}
 
 			// TODO: center text by some sort of anchor
@@ -259,8 +259,6 @@ pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
 	return (rec.x <= point.x && point.x <= rec.x + rec.width)
 	    && (rec.y <= point.y && point.y <= rec.y + rec.height);
 }
-
-
 
 
 
