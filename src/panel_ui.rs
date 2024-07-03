@@ -17,8 +17,7 @@ type Rectangle = raylib::math::Rectangle;
 // or a method, and they can store their own dam drag context. its their
 // problem
 
-#[derive(Debug)]
-pub struct PanelUi {
+pub struct TextPanel {
 	drag_context: PanelUiDragContext,
 
 	// position: Vector2,
@@ -46,10 +45,9 @@ pub struct PanelUi {
 // add text to thing
 // when asked for, tell if mouse is over something
 
-impl PanelUi {
+impl TextPanel {
 	// TODO: make more new functions. rust doesn't have defaults so it sucks
 
-	
 	#[allow(dead_code)]
 	pub fn add_text_button(&mut self, text: &str, text_width: i32) {
 		self.add_text_button_ex(text, text_width, self.default_text_height)
@@ -80,6 +78,7 @@ impl PanelUi {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn add_text_buttons_by_d(&mut self, text_array: &[&str], d: &mut RaylibDrawHandle) {
 		for text in text_array {
 			self.add_text_button_by_d(text, d);
@@ -95,11 +94,9 @@ impl PanelUi {
 		let index = self.get_hovered_id(mouse_context)?;
 		return Some(&self.text_array[index]);
 	}
-
-
 }
 
-impl PanelLike for PanelUi {
+impl PanelLike for TextPanel {
 	fn new() -> Self {
 		let text_padding = 20;
 		Self {
@@ -128,6 +125,9 @@ impl PanelLike for PanelUi {
 
 	fn width(&self)  -> f32 { self.width  as f32 }
 	fn height(&self) -> f32 { self.height as f32 }
+
+	fn set_width (&mut self, width : f32) { self.width  = width  as i32 }
+	fn set_height(&mut self, height: f32) { self.height = height as i32	}
 
 	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
@@ -229,10 +229,10 @@ impl PanelLike for PanelUi {
 
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct PanelUiDragContext {
-	is_draggable: bool, // because were going to be passing this around a lot
+	pub is_draggable: bool, // because were going to be passing this around a lot
 
-	position: Vector2,
-	is_dragging: bool,
+	pub position: Vector2,
+	pub is_dragging: bool,
 }
 
 impl PanelUiDragContext {
@@ -258,39 +258,35 @@ pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
 
 
 
-// Panel that has an array of panels, and draws them in a colum
+// Panel that has an array of panels, and draws them in a column
 // ignores all other positions on child panels
-pub struct PanelPanel {
+pub struct PanelColumn<T : PanelLike> {
 	drag_context: PanelUiDragContext,
 
-	panel_array: Vec<PanelUi>,
+	// panel_array: Vec<PanelUi>,
+	panel_array: Vec<T>,
 	panel_draggable_array: Vec<bool>,
 }
 
-impl PanelPanel {
-	pub fn add_panel(&mut self, new_panel: PanelUi, is_draggable: bool) {
+impl<T : PanelLike> PanelColumn<T> {
+	pub fn add_panel(&mut self, new_panel: T, is_draggable: bool) {		
 		self.panel_array.push(new_panel);
 		self.panel_draggable_array.push(is_draggable);
+		
+		self.equalize_widths()
 	}
 
 	// this widths the larges panel width, and sets all panels widths appropriately
-	pub fn equalize_widths(&mut self) {
-		// maybe just return? for now it will tell me if im being stupid
-		assert!(self.panel_array.len() > 0, "You are dumb");
-
-		let max_width = self.panel_array
-			.iter()
-			.map(|panel| panel.width)
-			.max()
-			.unwrap();
+	fn equalize_widths(&mut self) {
+		let max_width = self.width();
 
 		for panel in &mut self.panel_array {
-			panel.width = max_width;
+			panel.set_width(max_width);
 		}
 	}
 }
 
-impl PanelLike for PanelPanel {
+impl<T : PanelLike> PanelLike for PanelColumn<T> {
 	fn new() -> Self {
 		Self {
 			drag_context: PanelUiDragContext::default(),
@@ -303,10 +299,25 @@ impl PanelLike for PanelPanel {
 	}
 
 	fn width(&self)  -> f32 {
-		self.panel_array.iter().map(|panel| panel.width ).max().unwrap_or(0) as f32
+		self.panel_array
+			.iter()
+			.map(|panel| panel.width())
+			.fold(None, |z, u| {
+				if let Some(z) = z {
+					Some((u > z).then_some(u).unwrap_or(z))
+				} else { Some(u) }
+			})
+			.unwrap_or(0.0)
 	}
 	fn height(&self) -> f32 {
-		self.panel_array.iter().map(|panel| panel.height).sum::<i32>() as f32
+		self.panel_array.iter().map(|panel| panel.height()).sum()
+	}
+
+	fn set_width (&mut self, width : f32) {
+		for panel in &mut self.panel_array { panel.set_width (width ); }
+	}
+	fn set_height(&mut self, height: f32) {
+		for panel in &mut self.panel_array { panel.set_height(height); }
 	}
 
 	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
@@ -351,19 +362,17 @@ impl PanelLike for PanelPanel {
 		for i in 0..self.panel_array.len() {
 			let panel = &self.panel_array[i];
 			
-			assert!(panel.drag_context.is_draggable == false); // this panel doesn't handle this
+			assert!(panel.get_drag_context().is_draggable == false); // this panel doesn't handle this
 			
 			let tmp      = position;
-			position.y           += panel.height as f32;
+			position.y           += panel.height();
+			let position = tmp;
 			
 			if !self.panel_draggable_array[i] { continue; }
-			
-			let position = tmp;
 	
 			let panel_drag_context = PanelUiDragContext {
-				is_draggable: drag_context.is_draggable,
 				position,
-				is_dragging: drag_context.is_dragging,
+				..drag_context
 			};
 
 			let new_drag = panel.do_dragging_at(mouse_context, panel_drag_context);
@@ -375,7 +384,7 @@ impl PanelLike for PanelPanel {
 				drag_context.position += new_drag.position - panel_drag_context.position;
 				drag_context.is_dragging = new_drag.is_dragging;
 
-				break; // dragging does twice as fast when you don't break?
+				break; // dragging does one and a half times as fast. lol
 			}
 		}
 	
@@ -385,7 +394,7 @@ impl PanelLike for PanelPanel {
 	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
 		let mut position = position;
 		for panel in self.panel_array.into_iter() {
-			let height = panel.height;
+			let height = panel.height();
 
 			panel.draw_panel_at(d, mouse_context, position);
 			position.y += height as f32;
@@ -403,6 +412,11 @@ pub trait PanelLike {
 
 	fn width (&self) -> f32;
 	fn height(&self) -> f32;
+	
+	// boo oop. but makes some things easier,
+	// some panels will panic if you try to do this 
+	fn set_width (&mut self, width : f32);
+	fn set_height(&mut self, height: f32);
 
 	// meh, wish we could do better than getters
 	// and setters, feels too oop
