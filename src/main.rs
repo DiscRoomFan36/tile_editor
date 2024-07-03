@@ -429,6 +429,8 @@ fn main() {
 
         panel_drag = panel_panel.do_dragging(&mouse_context);
 
+        println!("{:?}", panel_panel.get_hovered_id_recursively(&mouse_context));
+
         panel_panel.draw_panel(&mut d, &mouse_context);
     }
 }

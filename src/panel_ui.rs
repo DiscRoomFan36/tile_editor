@@ -88,38 +88,7 @@ impl PanelUi {
 	// TODO Rest of add text buttons
 
 	
-	#[allow(dead_code)]
-	pub fn get_hovered_id(&self, mouse_context: &MouseContext) -> Option<usize> {
-		let mut xx = self.drag_context.position.x as i32;
-		let mut yy = self.drag_context.position.y as i32;
-
-		xx += self.text_padding; // indent for text
-		yy += self.text_padding; // indent for backing padding
-
-		for i in 0..self.text_array.len() {
-			// let text = &self.text_array[i];
-			// let width = self.text_width_array[i];
-			let height = self.text_height_array[i];
-		
-			let rec = Rectangle {
-				x: xx as f32, y: yy as f32,
-				width: (self.width - self.text_padding * 2) as f32,
-				height: height as f32
-			};
-
-			if point_rec_collision(mouse_context.mouse_pos, rec) {
-				// we found it. maybe do some checking to assert that were not above anything else?
-				return Some(i);
-			}
-
-			yy += height;
-
-			// for the item padding
-			yy += self.item_padding
-		}
-
-		return None;
-	}
+	
 	// tells me what text button its over and returns it.
 	#[allow(dead_code)]
 	pub fn get_hovered(&self, mouse_context: &MouseContext) -> Option<&str> {
@@ -160,9 +129,48 @@ impl PanelLike for PanelUi {
 	fn width(&self)  -> f32 { self.width  as f32 }
 	fn height(&self) -> f32 { self.height as f32 }
 
-	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context.clone() }
+	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
 		self.drag_context = drag_context;
+	}
+
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
+		let mut xx = position.x as i32;
+		let mut yy = position.y as i32;
+
+		xx += self.text_padding; // indent for text
+		yy += self.text_padding; // indent for backing padding
+
+		for i in 0..self.text_array.len() {
+			// let text = &self.text_array[i];
+			// let width = self.text_width_array[i];
+			let height = self.text_height_array[i];
+		
+			let rec = Rectangle {
+				x: xx as f32, y: yy as f32,
+				width: (self.width - self.text_padding * 2) as f32,
+				height: height as f32
+			};
+
+			if point_rec_collision(mouse_context.mouse_pos, rec) {
+				// we found it. maybe do some checking to assert that were not above anything else?
+				return Some(i);
+			}
+
+			yy += height;
+
+			// for the item padding
+			yy += self.item_padding
+		}
+
+		return None;
+	}
+	
+	// this one doesn't do any recursively, its a 'leaf node'
+	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize> {
+		self.get_hovered_id_at(mouse_context, position)
+			.map(|id| vec![id])
+			.unwrap_or_default()
 	}
 
 	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
@@ -219,7 +227,7 @@ impl PanelLike for PanelUi {
 	}
 }
 
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct PanelUiDragContext {
 	is_draggable: bool, // because were going to be passing this around a lot
 
@@ -301,7 +309,34 @@ impl PanelLike for PanelPanel {
 		self.panel_array.iter().map(|panel| panel.height).sum::<i32>() as f32
 	}
 
-	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context.clone() }
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
+		let mut position = position;
+		for (i, panel) in self.panel_array.iter().enumerate() {
+			if panel.mouse_over_panel_at(mouse_context, position) {
+				return Some(i);
+			}
+			position.y += panel.height();
+		}
+
+		return None;
+	}
+	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, mut position: Vector2) -> Vec<usize> {
+		self.get_hovered_id_at(mouse_context, position)
+			.map(|id| {
+				(0..id)
+					.map(|i| &self.panel_array[i])
+					.for_each(|panel| position.y += panel.height());
+
+				[
+					vec![id],
+					self.panel_array[id].get_hovered_id_recursively_at(mouse_context, position),
+				].concat()
+
+			})
+			.unwrap_or_default()
+	}
+
+	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
 		self.drag_context = drag_context;
 	}
@@ -331,7 +366,7 @@ impl PanelLike for PanelPanel {
 				is_dragging: drag_context.is_dragging,
 			};
 
-			let new_drag = panel.do_dragging_at(mouse_context, panel_drag_context.clone());
+			let new_drag = panel.do_dragging_at(mouse_context, panel_drag_context);
 
 			// I don't think this is technically correct, but, it 'fails correctly'
 			// the reason for the double drag is because new drag is false, and it still
@@ -366,15 +401,13 @@ pub trait PanelLike {
 	fn new() -> Self;
 	fn new_draggable(drag_context: PanelUiDragContext) -> Self;
 
-	fn width(&self)  -> f32;
+	fn width (&self) -> f32;
 	fn height(&self) -> f32;
 
 	// meh, wish we could do better than getters
 	// and setters, feels too oop
 	// any smart compiler would optimize this out, is rust smart? 
-	fn get_position(&self) -> Vector2 {
-		self.get_drag_context().position
-	}
+	fn get_position(&self) -> Vector2 { self.get_drag_context().position }
 	// fn set_position(&mut self) -> Vector2;
 
 	// kinda necessary setter and getter. 
@@ -382,7 +415,6 @@ pub trait PanelLike {
 	// so we can auto impl some stuff
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext);
 	
-
 
 	// for bounding box purposes
 	fn as_rec(&self) -> Rectangle {
@@ -395,7 +427,7 @@ pub trait PanelLike {
 		}
 	}
 
-	fn mouse_over_panel(&self, mouse_context: &MouseContext) -> bool {
+	fn mouse_over_panel   (&self, mouse_context: &MouseContext) -> bool {
 		self.mouse_over_panel_at(mouse_context, self.get_position())
 	}
 	fn mouse_over_panel_at(&self, mouse_context: &MouseContext, position: Vector2) -> bool {
@@ -404,22 +436,40 @@ pub trait PanelLike {
 			y: position.y,
 			..self.as_rec()
 		};
-
 		return point_rec_collision(mouse_context.mouse_pos, rec);
 	}
 	
+	// most if not all panels, should have a list of inner items,
+	// that it displays, this function returns the id in the array
+	// where it is stored, this might not be the most useful, so
+	// panels should also give you some helper functions for this
+	fn get_hovered_id   (&self, mouse_context: &MouseContext) -> Option<usize> {
+		self.get_hovered_id_at(mouse_context, self.get_position())
+	}
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize>;
+
+	// this will return an array of id's, user should keep track
+	// of the order they entered their items, and this fill allow
+	// them to check if the thing they want to check is hovered,
+	// this requires panels to only have 1 thing be hovered at a time,
+	// witch is true to life as only one thing can be rendered at a time.
+	fn get_hovered_id_recursively   (&self, mouse_context: &MouseContext) -> Vec<usize> {
+		self.get_hovered_id_recursively_at(mouse_context, self.get_position())
+	}
+	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize>;
+
 	// handle mouse dragging
-	fn do_dragging(&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
+	fn do_dragging   (&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
 		let drag_context = self.do_dragging_at(mouse_context, self.get_drag_context());
 		
-		self.set_drag_context(drag_context.clone());
+		self.set_drag_context(drag_context);
 		
 		return drag_context;
 	}
 	fn do_dragging_at(&self, mouse_context: &MouseContext, drag_context: PanelUiDragContext) -> PanelUiDragContext;
 
 	// consume self here, should only dray once, clone if required
-	fn draw_panel(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext)
+	fn draw_panel   (self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext)
 	where Self : Sized {
 		let position = self.get_position();
 		self.draw_panel_at(d, mouse_context, position)
