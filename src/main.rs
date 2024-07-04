@@ -50,7 +50,7 @@ struct ImageContainer {
     texture: Option<Texture2D>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MouseContext {
     mouse_pos   :  Vector2,
     mouse_delta : Vector2,
@@ -87,17 +87,6 @@ fn main() {
     // let dirty = true; // TODO: refactor for this
     let mut textures_dirty = true;
 
-    // TESTING
-    // TESTING
-    // TESTING
-    // TESTING
-    // let mut a_drag_context = PanelUiDragContext::new(Vector2::new(100.0, 100.0));
-
-    // let mut panel_drag = PanelUiDragContext::new(Vector2::new(300.0, 100.0));
-    // TESTING
-    // TESTING
-    // TESTING
-    // TESTING
 
     /* -------------------- EVENT LOOP -------------------- */
     while !rl.window_should_close() {
@@ -286,6 +275,35 @@ fn main() {
         file_dialog_context
             .to_panel(&mut d)
             .draw_panel(&mut d, &mouse_context);
+
+
+        // TESTING
+        // TESTING
+        // TESTING
+        // TESTING
+        // TESTING
+
+        let mut grid_panel = GridDrawPanel::new_at_position(Vector2::new(300.0, 25.0));
+        grid_panel.item_width  = 64;
+        grid_panel.item_height = 64;
+
+        // let colors: Vec<_> = (0..12).map(|i| Color::color_from_hsv(i as f32 / 12.0 * 360.0, 0.7, 0.9)).collect();
+
+        for _i in 0..10 {
+            let texture = icon_server.get_default_handle().texture.as_ref().unwrap();
+
+            grid_panel.add(texture);
+        }
+
+        println!("{:?}", grid_panel.get_hovered_id(&mouse_context));
+
+        grid_panel.draw_panel(&mut d, &mouse_context);
+
+        // TESTING
+        // TESTING
+        // TESTING
+        // TESTING
+        // TESTING
     }
 }
 
@@ -296,18 +314,6 @@ fn new_square(start_pos: Vector2, pos: (usize, usize)) -> Rectangle {
         y: start_pos.y + y as f32 * (SQUARE_SIZE + SQUARE_SPACING),
         width: SQUARE_SIZE, height: SQUARE_SIZE,
     }
-}
-
-fn pad_rectangle_ex(rec: Rectangle, left: f32, right: f32, top: f32, bottom: f32) -> Rectangle {
-    Rectangle {
-        x:      rec.x      - left,
-        y:      rec.y      - top,
-        width:  rec.width  + right * 2.0,
-        height: rec.height + bottom * 2.0,
-    }
-}
-fn pad_rectangle(rec: Rectangle, padding: f32) -> Rectangle {
-    pad_rectangle_ex(rec, padding, padding, padding, padding)
 }
 
 impl ToAndFromJsonValue for String {

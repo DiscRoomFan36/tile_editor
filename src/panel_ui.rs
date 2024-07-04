@@ -1,6 +1,12 @@
 
+use std::cmp::min;
+
 use raylib::prelude::*;
 
+use crate::MouseContext;
+
+type Vector2 = raylib::math::Vector2;
+type Rectangle = raylib::math::Rectangle;
 
 pub trait CanMeasureText {
 	fn my_measure_text(&self, text: &str, font_size: i32) -> i32;
@@ -18,14 +24,127 @@ impl CanMeasureText for RaylibDrawHandle<'_> {
 	}
 }
 
+pub trait PanelLike {
+	// creates a default panel, panel will probably have more in
+	// depth versions of these
+	fn new() -> Self where Self: Sized;
+	fn new_draggable(drag_context: PanelUiDragContext) -> Self
+	where Self : Sized {
+		let mut new = Self::new();
+		new.set_drag_context(drag_context);
+		return new;
+	}
+	fn new_at_position(position: Vector2) -> Self
+	where Self : Sized {
+		let mut new = Self::new();
+		let mut drag_context = new.get_drag_context();
+		drag_context.position = position;
+		new.set_drag_context(drag_context);
+		new
+	}
+
+	fn width (&self) -> f32;
+	fn height(&self) -> f32;
+	
+	// boo oop. but makes some things easier,
+	// some panels will panic if you try to do this 
+	fn set_width (&mut self, width : f32);
+	fn set_height(&mut self, height: f32);
+
+	// meh, wish we could do better than getters
+	// and setters, feels too oop
+	// any smart compiler would optimize this out, is rust smart? 
+	fn get_position(&self) -> Vector2 { self.get_drag_context().position }
+	// fn set_position(&mut self) -> Vector2;
+
+	// kinda necessary setter and getter. 
+	fn get_drag_context(&self) -> PanelUiDragContext;
+	// so we can auto impl some stuff
+	fn set_drag_context(&mut self, drag_context: PanelUiDragContext);
+	
+
+	// for bounding box purposes
+	fn as_rec(&self) -> Rectangle { self.as_rec_at(self.get_position()) }
+	fn as_rec_at(&self, position: Vector2) -> Rectangle {
+		Rectangle {
+			x      : position.x,
+			y      : position.y,
+			width  : self.width(),
+			height : self.height(),
+		}
+	}
+
+	fn mouse_over_panel   (&self, mouse_context: &MouseContext) -> bool {
+		self.mouse_over_panel_at(mouse_context, self.get_position())
+	}
+	fn mouse_over_panel_at(&self, mouse_context: &MouseContext, position: Vector2) -> bool {
+		point_rec_collision(mouse_context.mouse_pos, self.as_rec_at(position))
+	}
+	
+	// most if not all panels, should have a list of inner items,
+	// that it displays, this function returns the id in the array
+	// where it is stored, this might not be the most useful, so
+	// panels should also give you some helper functions for this
+	fn get_hovered_id   (&self, mouse_context: &MouseContext) -> Option<usize> {
+		self.get_hovered_id_at(mouse_context, self.get_position())
+	}
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize>;
+
+	// this will return an array of id's, user should keep track
+	// of the order they entered their items, and this fill allow
+	// them to check if the thing they want to check is hovered,
+	// this requires panels to only have 1 thing be hovered at a time,
+	// witch is true to life as only one thing can be rendered at a time.
+	fn get_hovered_id_recursively   (&self, mouse_context: &MouseContext) -> Vec<usize> {
+		self.get_hovered_id_recursively_at(mouse_context, self.get_position())
+	}
+	// this is the base case, for a leaf node panel
+	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize> {
+		self.get_hovered_id_at(mouse_context, position)
+			.map(|id| vec![id])
+			.unwrap_or_default()
+	}
+
+	// handle mouse dragging
+	fn do_dragging   (&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
+		let drag_context = self.do_dragging_at(mouse_context, self.get_drag_context());
+		
+		self.set_drag_context(drag_context);
+		
+		return drag_context;
+	}
+	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
+		if drag_context.is_draggable == false {
+			panic!("Panel isn't draggable")
+		}
+
+		if self.mouse_over_panel_at(mouse_context, drag_context.position) && mouse_context.mouse_left_pressed {
+			drag_context.is_dragging = true;
+		}
+
+		if drag_context.is_dragging {
+			drag_context.position += mouse_context.mouse_delta;
+			if mouse_context.mouse_left_released {
+				drag_context.is_dragging = false;
+			}
+		}
+
+		return drag_context;
+	}
+
+
+	// consume self here, should only dray once, clone if required
+	fn draw_panel   (&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext)
+	where Self : Sized {
+		let position = self.get_position();
+		self.draw_panel_at(d, mouse_context, position)
+	}
+	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2);
+}
+
 // TODO: make this accept a drawable object?
 // the only two objects i have in mind are text and images
 // i could even just impl those cases in this file
-
-use crate::{pad_rectangle_ex, MouseContext};
-
-type Vector2 = raylib::math::Vector2;
-type Rectangle = raylib::math::Rectangle;
 
 
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
@@ -53,15 +172,15 @@ pub struct TextPanel {
 	width: i32,
 	height: i32,
 
+	text_array: Vec<String>,
+	text_width_array: Vec<i32>,
+	text_height_array: Vec<i32>,
+
 	// if your going to change these, do it immediately
 	pub default_text_height: i32,
 	pub text_padding: i32,
 
 	pub item_padding: i32,
-
-	text_array: Vec<String>,
-	text_width_array: Vec<i32>,
-	text_height_array: Vec<i32>,
 
 	pub background_color: Color,
 	pub text_color: Color,
@@ -140,13 +259,11 @@ impl PanelLike for TextPanel {
 			text_width_array: vec![],
 			text_height_array: vec![],
 
+			// Just some random colors
 			background_color: Color::YELLOW,
 			text_color: Color::RED,
 			hover_color: Some(Color::ORANGE),
 		}
-	}
-	fn new_draggable(drag_context: PanelUiDragContext) -> Self {
-		Self { drag_context, ..Self::new() }
 	}
 
 	fn width(&self)  -> f32 { self.width  as f32 }
@@ -190,33 +307,7 @@ impl PanelLike for TextPanel {
 		return None;
 	}
 	
-	// this one doesn't do any recursively, its a 'leaf node'
-	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize> {
-		self.get_hovered_id_at(mouse_context, position)
-			.map(|id| vec![id])
-			.unwrap_or_default()
-	}
-
-	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
-		if drag_context.is_draggable == false {
-			panic!("Panel isn't draggable")
-		}
-
-		if self.mouse_over_panel_at(mouse_context, drag_context.position) && mouse_context.mouse_left_pressed {
-			drag_context.is_dragging = true;
-		}
-
-		if drag_context.is_dragging {
-			drag_context.position += mouse_context.mouse_delta;
-			if mouse_context.mouse_left_released {
-				drag_context.is_dragging = false;
-			}
-		}
-
-		return drag_context;
-	}
-
-	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
 		let mut xx = position.x as i32;
 		let mut yy = position.y as i32;
 
@@ -260,7 +351,17 @@ pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
 	    && (rec.y <= point.y && point.y <= rec.y + rec.height);
 }
 
-
+pub fn pad_rectangle_ex(rec: Rectangle, left: f32, right: f32, top: f32, bottom: f32) -> Rectangle {
+    Rectangle {
+        x:      rec.x      - left,
+        y:      rec.y      - top,
+        width:  rec.width  + right * 2.0,
+        height: rec.height + bottom * 2.0,
+    }
+}
+pub fn pad_rectangle(rec: Rectangle, padding: f32) -> Rectangle {
+    pad_rectangle_ex(rec, padding, padding, padding, padding)
+}
 
 
 
@@ -301,9 +402,6 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 			panel_draggable_array: vec![],
 		}
 	}
-	fn new_draggable(drag_context: PanelUiDragContext) -> Self {
-		Self { drag_context, ..Self::new() }
-	}
 
 	fn width(&self)  -> f32 {
 		self.panel_array
@@ -324,7 +422,11 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 		for panel in &mut self.panel_array { panel.set_width (width ); }
 	}
 	fn set_height(&mut self, height: f32) {
-		for panel in &mut self.panel_array { panel.set_height(height); }
+		let current_height = self.height();
+		// Scale all children to add up to height
+		for panel in &mut self.panel_array {
+			panel.set_height(panel.height() / current_height * height);
+		}
 	}
 
 	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
@@ -398,9 +500,9 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 		return drag_context;
 	}
 
-	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
 		let mut position = position;
-		for panel in self.panel_array.into_iter() {
+		for panel in self.panel_array.iter() {
 			let height = panel.height();
 
 			panel.draw_panel_at(d, mouse_context, position);
@@ -410,90 +512,159 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 }
 
 
+pub trait DrawableObject {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle);
+}
 
-pub trait PanelLike {
-	// creates a default panel, panel will probably have more in
-	// depth versions of these
-	fn new() -> Self;
-	fn new_draggable(drag_context: PanelUiDragContext) -> Self;
+impl DrawableObject for dyn PanelLike {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		let position = Vector2 { x: rec.x, y: rec.y };
+		// this introduces a bug. mouse pos would be at (0, 0)
+		// potentially triggering a on hover thing.
+		let mouse_context = MouseContext::default();
+		self.draw_panel_at(d, &mouse_context, position);
+	}
+}
 
-	fn width (&self) -> f32;
-	fn height(&self) -> f32;
+impl DrawableObject for Color {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		d.draw_rectangle_rec(rec, self)
+	}
+}
+
+impl DrawableObject for &Texture2D {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		// floats might screw us
+		assert!(self.width  == rec.width  as i32);
+		assert!(self.height == rec.height as i32);
+		// hope you smart enough for this, texture needs to be the right size
+		d.draw_texture(self, rec.x as i32, rec.y as i32, Color::WHITE)
+	}
+}
+
+
+pub struct GridDrawPanel<T : DrawableObject> {
+	drag_context: PanelUiDragContext,
+
+	// this controls how many items in a row or col before
+	// moving onto the next row/col. cannot be 0
+	run_length: usize,
+	// true if by cols, false if by rows
+	pub by_cols: bool,
+
+	grid_array: Vec<T>,
+
+	pub item_width  : i32,
+	pub item_height : i32,
+
+	pub item_padding: i32,
+
+	pub highlight_color  : Option<Color>,
+	pub background_color : Option<Color>,
+}
+
+impl<T : DrawableObject> GridDrawPanel<T>  {
+	pub fn add(&mut self, new_object: T) {
+		self.grid_array.push(new_object)
+	}
+
+	fn length_helper(&self, by_cols: bool, length: i32) -> i32 {
+		if self.grid_array.len() == 0 { return 0; }
+		let num_wide = if by_cols {
+			min(self.grid_array.len(), self.run_length) as i32
+		} else {
+			self.grid_array.len().div_ceil(   self.run_length) as i32
+		};
+		length * num_wide + self.item_padding * (num_wide - 1)
+	}
+
+	// TODO: Clean this up
+	fn position_of_item_at(&self, index: usize, position: Vector2) -> Vector2 {
+		let (move_by, next_cycle) = if self.by_cols {
+			(
+				Vector2 { x: 0.0, y: (self.item_height + self.item_padding) as f32},
+				Vector2 { x: (self.item_width + self.item_padding) as f32, y: 0.0},
+			)
+		} else {
+			(
+				Vector2 { x: (self.item_width + self.item_padding) as f32, y: 0.0},
+				Vector2 { x: 0.0, y: (self.item_height + self.item_padding) as f32},
+			)
+		};
+
+		position
+			+ (move_by   .scale_by((index / self.run_length) as f32))
+			+ (next_cycle.scale_by((index % self.run_length) as f32))
+	}
 	
-	// boo oop. but makes some things easier,
-	// some panels will panic if you try to do this 
-	fn set_width (&mut self, width : f32);
-	fn set_height(&mut self, height: f32);
-
-	// meh, wish we could do better than getters
-	// and setters, feels too oop
-	// any smart compiler would optimize this out, is rust smart? 
-	fn get_position(&self) -> Vector2 { self.get_drag_context().position }
-	// fn set_position(&mut self) -> Vector2;
-
-	// kinda necessary setter and getter. 
-	fn get_drag_context(&self) -> PanelUiDragContext;
-	// so we can auto impl some stuff
-	fn set_drag_context(&mut self, drag_context: PanelUiDragContext);
-	
-
-	// for bounding box purposes
-	fn as_rec(&self) -> Rectangle {
-		let position = self.get_position();
+	fn rec_of_item_at(&self, index: usize, position: Vector2) -> Rectangle {
+		let position = self.position_of_item_at(index, position);
 		Rectangle {
-			x      : position.x,
-			y      : position.y,
-			width  : self.width(),
-			height : self.height(),
+			x: position.x,
+			y: position.y,
+			width  : self.item_width  as f32,
+			height : self.item_height as f32,
+		}
+	}
+}
+
+impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
+	fn new() -> Self {
+		Self {
+			drag_context: PanelUiDragContext::default(),
+			run_length: 5,
+			by_cols: true,
+			grid_array: vec![],
+			item_width: 32,
+			item_height: 64,
+			item_padding: 10,
+			highlight_color: Some(Color::ORANGE),
+			background_color: Some(Color::BLACK ), // TODO: Change to None
 		}
 	}
 
-	fn mouse_over_panel   (&self, mouse_context: &MouseContext) -> bool {
-		self.mouse_over_panel_at(mouse_context, self.get_position())
-	}
-	fn mouse_over_panel_at(&self, mouse_context: &MouseContext, position: Vector2) -> bool {
-		let rec = Rectangle {
-			x: position.x,
-			y: position.y,
-			..self.as_rec()
-		};
-		return point_rec_collision(mouse_context.mouse_pos, rec);
-	}
-	
-	// most if not all panels, should have a list of inner items,
-	// that it displays, this function returns the id in the array
-	// where it is stored, this might not be the most useful, so
-	// panels should also give you some helper functions for this
-	fn get_hovered_id   (&self, mouse_context: &MouseContext) -> Option<usize> {
-		self.get_hovered_id_at(mouse_context, self.get_position())
-	}
-	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize>;
+	fn width (&self) -> f32 { self.length_helper(self.by_cols, self.item_width) as f32 }
+	fn height(&self) -> f32 { self.length_helper(!self.by_cols, self.item_height) as f32 }
 
-	// this will return an array of id's, user should keep track
-	// of the order they entered their items, and this fill allow
-	// them to check if the thing they want to check is hovered,
-	// this requires panels to only have 1 thing be hovered at a time,
-	// witch is true to life as only one thing can be rendered at a time.
-	fn get_hovered_id_recursively   (&self, mouse_context: &MouseContext) -> Vec<usize> {
-		self.get_hovered_id_recursively_at(mouse_context, self.get_position())
-	}
-	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize>;
+	// TODO: change item padding to fit into new width. for pros only
+	fn set_width (&mut self, _width : f32) { todo!() }
+	fn set_height(&mut self, _height: f32) { todo!() }
 
-	// handle mouse dragging
-	fn do_dragging   (&mut self, mouse_context: &MouseContext) -> PanelUiDragContext {
-		let drag_context = self.do_dragging_at(mouse_context, self.get_drag_context());
-		
-		self.set_drag_context(drag_context);
-		
-		return drag_context;
-	}
-	fn do_dragging_at(&self, mouse_context: &MouseContext, drag_context: PanelUiDragContext) -> PanelUiDragContext;
+	fn get_drag_context(&self) -> PanelUiDragContext                 { self.drag_context }
+	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) { self.drag_context = drag_context; }
 
-	// consume self here, should only dray once, clone if required
-	fn draw_panel   (self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext)
-	where Self : Sized {
-		let position = self.get_position();
-		self.draw_panel_at(d, mouse_context, position)
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
+		for i in 0..self.grid_array.len() {
+			let rec = self.rec_of_item_at(i, position);
+
+			if point_rec_collision(mouse_context.mouse_pos, rec) {
+				return Some(i);
+			}
+		}
+		return None;
 	}
-	fn draw_panel_at(self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2);
+
+	// maybe when we upgrade this
+	// fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize>;
+
+	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+		if let Some(color) = self.background_color {
+			d.draw_rectangle_rec(self.as_rec_at(position), color);
+		}
+
+		let hovered = self.get_hovered_id_at(mouse_context, position);
+
+		for (i, drawable) in self.grid_array.iter().enumerate() {
+			let rec = self.rec_of_item_at(i, position);
+
+			if let Some(highlight_color) = self.highlight_color {
+				if hovered == Some(i) {
+					let pad_rec = pad_rectangle(rec, (self.item_padding / 2) as f32);
+					d.draw_rectangle_rec(pad_rec, highlight_color);
+				}
+			}
+
+			drawable.draw(d, rec);
+		}
+	}
 }

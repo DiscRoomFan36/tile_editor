@@ -46,50 +46,49 @@ impl FileDialogContext {
 	pub fn to_panel(&self, rl: &mut impl CanMeasureText) -> PanelColumn<TextPanel> {
 		let mut file_dialog_panel = PanelColumn::new_draggable(self.drag_context);
 		
-		if self.is_open == false {
-			return file_dialog_panel;
+		if self.is_open == false { return file_dialog_panel; }
+
+		{ // Current folder text
+			let mut header = TextPanel::new_custom(
+				TEXT_SIZE,
+				TEXT_PADDING,
+				ITEM_PADDING,
+				FILE_DIALOG_CURRENT_FOLDER_COLOR,
+				FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR,
+				None
+			);
+			header.add_text_button(self.current_path.to_str().unwrap(), rl);
+			file_dialog_panel.add_panel(header, true);
 		}
 
-		// TODO: color
+		{ // File labels
+			let mut file_list = TextPanel::new_custom(
+				TEXT_SIZE,
+				TEXT_PADDING,
+				ITEM_PADDING,
+				FILE_DIALOG_LABEL_BACKGROUND_COLOR,
+				FILE_DIALOG_LABEL_TEXT_COLOR,
+				Some(FILE_DIALOG_LABEL_HOVER_COLOR)
+			);
+			let file_names = list_directory(&self.current_path);
+			// Hack.
+			let v: Vec<&str> = file_names.iter().map(<_>::as_ref).collect();
+			file_list.add_text_buttons(&v, rl);
+			file_dialog_panel.add_panel(file_list, false);
+		}
 
-		let mut header = TextPanel::new_custom(
-			TEXT_SIZE,
-			TEXT_PADDING,
-			ITEM_PADDING,
-			FILE_DIALOG_CURRENT_FOLDER_COLOR,
-			FILE_DIALOG_CURRENT_FOLDER_TEXT_COLOR,
-			None
-		);
-		header.add_text_button(self.current_path.to_str().unwrap(), rl);
-		file_dialog_panel.add_panel(header, true);
-
-
-		let mut file_list = TextPanel::new_custom(
-			TEXT_SIZE,
-			TEXT_PADDING,
-			ITEM_PADDING,
-			FILE_DIALOG_LABEL_BACKGROUND_COLOR,
-			FILE_DIALOG_LABEL_TEXT_COLOR,
-			Some(FILE_DIALOG_LABEL_HOVER_COLOR)
-		);
-		let file_names = list_directory(&self.current_path);
-		// Hack.
-		let v: Vec<&str> = file_names.iter().map(<_>::as_ref).collect();
-		file_list.add_text_buttons(&v, rl);
-		file_dialog_panel.add_panel(file_list, false);
-
-
-		let mut select_folder_button = TextPanel::new_custom(
-			TEXT_SIZE,
-			TEXT_PADDING,
-			ITEM_PADDING,
-			FILE_DIALOG_SELECT_BACKGROUND_COLOR,
-			FILE_DIALOG_SELECT_TEXT_COLOR,
-			Some(FILE_DIALOG_SELECT_HOVER_COLOR)
-		);
-		select_folder_button.add_text_button(FILE_DIALOG_SELECT_FOLDER_TEXT, rl);
-		file_dialog_panel.add_panel(select_folder_button, false);
-
+		{ // Select Folder Button
+			let mut select_folder_button = TextPanel::new_custom(
+				TEXT_SIZE,
+				TEXT_PADDING,
+				ITEM_PADDING,
+				FILE_DIALOG_SELECT_BACKGROUND_COLOR,
+				FILE_DIALOG_SELECT_TEXT_COLOR,
+				Some(FILE_DIALOG_SELECT_HOVER_COLOR)
+			);
+			select_folder_button.add_text_button(FILE_DIALOG_SELECT_FOLDER_TEXT, rl);
+			file_dialog_panel.add_panel(select_folder_button, false);
+		}
 
 		return file_dialog_panel;
 	}

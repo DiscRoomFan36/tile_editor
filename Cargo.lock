@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "tile_editor"
-version = "1.1.20"
+version = "1.1.21"
 dependencies = [
  "json",
  "raylib",
