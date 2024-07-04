@@ -142,6 +142,36 @@ pub trait PanelLike {
 	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2);
 }
 
+pub trait DrawableObject {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle);
+}
+
+impl DrawableObject for dyn PanelLike {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		let position = Vector2 { x: rec.x, y: rec.y };
+		// this introduces a bug. mouse pos would be at (0, 0)
+		// potentially triggering a on hover thing.
+		let mouse_context = MouseContext::default();
+		self.draw_panel_at(d, &mouse_context, position);
+	}
+}
+
+impl DrawableObject for Color {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		d.draw_rectangle_rec(rec, self)
+	}
+}
+
+impl DrawableObject for &Texture2D {
+	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
+		// floats might screw us
+		assert!(self.width  == rec.width  as i32);
+		assert!(self.height == rec.height as i32);
+		// hope you smart enough for this, texture needs to be the right size
+		d.draw_texture(self, rec.x as i32, rec.y as i32, Color::WHITE)
+	}
+}
+
 // TODO: make this accept a drawable object?
 // the only two objects i have in mind are text and images
 // i could even just impl those cases in this file
@@ -243,15 +273,15 @@ impl TextPanel {
 
 impl PanelLike for TextPanel {
 	fn new() -> Self {
-		let text_padding = 20;
+		const TEXT_PADDING: i32 = 20;
 		Self {
 			drag_context: PanelUiDragContext::default(),
 
 			width: 0,
-			height: text_padding * 2,
+			height: TEXT_PADDING * 2,
 
 			default_text_height: 20,
-			text_padding,
+			text_padding: TEXT_PADDING,
 
 			item_padding: 5,
 
@@ -283,8 +313,6 @@ impl PanelLike for TextPanel {
 		yy += self.text_padding; // indent for backing padding
 
 		for i in 0..self.text_array.len() {
-			// let text = &self.text_array[i];
-			// let width = self.text_width_array[i];
 			let height = self.text_height_array[i];
 		
 			let rec = Rectangle {
@@ -298,16 +326,15 @@ impl PanelLike for TextPanel {
 				return Some(i);
 			}
 
-			yy += height;
-
-			// for the item padding
-			yy += self.item_padding
+			yy += height + self.item_padding;
 		}
 
 		return None;
 	}
 	
 	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+		// TODO: just as rec?
+
 		let mut xx = position.x as i32;
 		let mut yy = position.y as i32;
 
@@ -347,7 +374,7 @@ impl PanelLike for TextPanel {
 
 // check weather a point is in a rectangle
 pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
-	return (rec.x <= point.x && point.x <= rec.x + rec.width)
+	return (rec.x <= point.x && point.x <= rec.x + rec.width )
 	    && (rec.y <= point.y && point.y <= rec.y + rec.height);
 }
 
@@ -364,14 +391,11 @@ pub fn pad_rectangle(rec: Rectangle, padding: f32) -> Rectangle {
 }
 
 
-
-
 // Panel that has an array of panels, and draws them in a column
 // ignores all other positions on child panels
 pub struct PanelColumn<T : PanelLike> {
 	drag_context: PanelUiDragContext,
 
-	// panel_array: Vec<PanelUi>,
 	panel_array: Vec<T>,
 	panel_draggable_array: Vec<bool>,
 }
@@ -457,9 +481,7 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 	}
 
 	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
-	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) {
-		self.drag_context = drag_context;
-	}
+	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) { self.drag_context = drag_context; }
 
 	fn do_dragging_at(&self, mouse_context: &MouseContext, mut drag_context: PanelUiDragContext) -> PanelUiDragContext {
 		if drag_context.is_draggable == false {
@@ -512,37 +534,6 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 }
 
 
-pub trait DrawableObject {
-	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle);
-}
-
-impl DrawableObject for dyn PanelLike {
-	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
-		let position = Vector2 { x: rec.x, y: rec.y };
-		// this introduces a bug. mouse pos would be at (0, 0)
-		// potentially triggering a on hover thing.
-		let mouse_context = MouseContext::default();
-		self.draw_panel_at(d, &mouse_context, position);
-	}
-}
-
-impl DrawableObject for Color {
-	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
-		d.draw_rectangle_rec(rec, self)
-	}
-}
-
-impl DrawableObject for &Texture2D {
-	fn draw(&self, d: &mut RaylibDrawHandle, rec: Rectangle) {
-		// floats might screw us
-		assert!(self.width  == rec.width  as i32);
-		assert!(self.height == rec.height as i32);
-		// hope you smart enough for this, texture needs to be the right size
-		d.draw_texture(self, rec.x as i32, rec.y as i32, Color::WHITE)
-	}
-}
-
-
 pub struct GridDrawPanel<T : DrawableObject> {
 	drag_context: PanelUiDragContext,
 
@@ -564,6 +555,8 @@ pub struct GridDrawPanel<T : DrawableObject> {
 }
 
 impl<T : DrawableObject> GridDrawPanel<T>  {
+
+
 	pub fn add(&mut self, new_object: T) {
 		self.grid_array.push(new_object)
 	}
@@ -611,15 +604,15 @@ impl<T : DrawableObject> GridDrawPanel<T>  {
 impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
 	fn new() -> Self {
 		Self {
-			drag_context: PanelUiDragContext::default(),
-			run_length: 5,
-			by_cols: true,
-			grid_array: vec![],
-			item_width: 32,
-			item_height: 64,
-			item_padding: 10,
-			highlight_color: Some(Color::ORANGE),
-			background_color: Some(Color::BLACK ), // TODO: Change to None
+			drag_context     : PanelUiDragContext::default(),
+			run_length       : 5,
+			by_cols          : true,
+			grid_array       : vec![],
+			item_width       : 32,
+			item_height      : 64,
+			item_padding     : 10,
+			highlight_color  : Some(Color::ORANGE),
+			background_color : None,
 		}
 	}
 

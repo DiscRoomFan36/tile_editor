@@ -287,15 +287,11 @@ fn main() {
         grid_panel.item_width  = 64;
         grid_panel.item_height = 64;
 
-        // let colors: Vec<_> = (0..12).map(|i| Color::color_from_hsv(i as f32 / 12.0 * 360.0, 0.7, 0.9)).collect();
-
         for _i in 0..10 {
             let texture = icon_server.get_default_handle().texture.as_ref().unwrap();
 
             grid_panel.add(texture);
         }
-
-        println!("{:?}", grid_panel.get_hovered_id(&mouse_context));
 
         grid_panel.draw_panel(&mut d, &mouse_context);
 
