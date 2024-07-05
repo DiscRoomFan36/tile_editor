@@ -37,9 +37,7 @@ pub trait PanelLike {
 	fn new_at_position(position: Vector2) -> Self
 	where Self : Sized {
 		let mut new = Self::new();
-		let mut drag_context = new.get_drag_context();
-		drag_context.position = position;
-		new.set_drag_context(drag_context);
+		new.set_position(position);
 		new
 	}
 
@@ -55,7 +53,13 @@ pub trait PanelLike {
 	// and setters, feels too oop
 	// any smart compiler would optimize this out, is rust smart? 
 	fn get_position(&self) -> Vector2 { self.get_drag_context().position }
-	// fn set_position(&mut self) -> Vector2;
+	fn set_position(&mut self, position: Vector2) {
+		let new_drag = PanelUiDragContext {
+			position,
+			..self.get_drag_context()
+		};
+		self.set_drag_context(new_drag);
+	}
 
 	// kinda necessary setter and getter. 
 	fn get_drag_context(&self) -> PanelUiDragContext;
@@ -537,14 +541,15 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 pub struct GridDrawPanel<T : DrawableObject> {
 	drag_context: PanelUiDragContext,
 
+	// true if by cols, false if by rows
+	pub by_cols: bool,
 	// this controls how many items in a row or col before
 	// moving onto the next row/col. cannot be 0
 	run_length: usize,
-	// true if by cols, false if by rows
-	pub by_cols: bool,
 
 	grid_array: Vec<T>,
 
+	// remove pub?
 	pub item_width  : i32,
 	pub item_height : i32,
 
@@ -555,7 +560,19 @@ pub struct GridDrawPanel<T : DrawableObject> {
 }
 
 impl<T : DrawableObject> GridDrawPanel<T>  {
-
+	pub fn new_custom(
+		position: Vector2,
+		by_cols: bool, run_length: usize,
+		item_width: i32, item_height: i32, item_padding: i32,
+		highlight_color: Option<Color>, background_color: Option<Color>
+	) -> Self {
+		Self {
+			by_cols, run_length,
+			item_width, item_height, item_padding,
+			highlight_color, background_color,
+			..Self::new_at_position(position)
+		}
+	}
 
 	pub fn add(&mut self, new_object: T) {
 		self.grid_array.push(new_object)
@@ -605,12 +622,16 @@ impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
 	fn new() -> Self {
 		Self {
 			drag_context     : PanelUiDragContext::default(),
-			run_length       : 5,
+			
 			by_cols          : true,
+			run_length       : 5,
+			
 			grid_array       : vec![],
-			item_width       : 32,
+			
+			item_width       : 64,
 			item_height      : 64,
 			item_padding     : 10,
+			
 			highlight_color  : Some(Color::ORANGE),
 			background_color : None,
 		}

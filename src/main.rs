@@ -43,7 +43,7 @@ const PALLET_SELECTED_COLOR                 : Color = Color::RED;
 const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
 const PALLET_TEXTURE_TINT                   : Color = GRID_TEXTURE_TINT;
 
-
+const GRID_START_POSITION: Vector2 = Vector2::new(100.0, 100.0);
 
 struct ImageContainer {
     image: Image,
@@ -70,9 +70,6 @@ fn main() {
     let mut icon_server = MyIconServer::new(assets);
 
     let mut grid = TileGrid::new(4, 6);
-
-    // TODO: be smarter with this
-    let start_pos = Vector2::new(100.0, 100.0);
 
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -176,7 +173,7 @@ fn main() {
 
         update_pallet_mouse_events(&mut mouse_context, &mut icon_server);
 
-        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, start_pos);
+        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, GRID_START_POSITION);
 
         /* -------------------- LOAD TEXTURES -------------------- */
         if textures_dirty {
@@ -199,29 +196,27 @@ fn main() {
 
         // TODO: Move the grid out of the way
         /* -------------------- DRAW GRID -------------------- */
-        for i in 0..grid.rows*grid.cols {
-            let (x, y) = index_to_pos(i, grid.size());
+        let mut grid_panel = GridDrawPanel::new_custom(
+            GRID_START_POSITION,
+            true, grid.cols,
+            64, 64, 10,
+            Some(Color::ORANGE), None
+        );
 
-            let rec = new_square(start_pos, (x, y));
-            
-            /* -------------------- ON HOVER GRID -------------------- */
-            if mouse_context.hovering_over_grid[i] {
-                // draw some highlighting around the hovered rectangle
-                d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
-            }
-    
-            let image_container = if let Some(name) = grid.get((x, y)) {
+        for i in 0..grid.rows*grid.cols {
+            let image_container = if let Some(name) = grid.get_from_index(i) {
                 icon_server.get_by_name(name).expect("Name exist in icon server")
             } else {
                 icon_server.get_default_handle()
             };
 
-            d.draw_texture(
-                image_container.texture.as_ref().unwrap(),
-                rec.x as i32, rec.y as i32, GRID_TEXTURE_TINT
-            );
+            grid_panel.add(image_container.texture.as_ref().unwrap());
         }
-    
+
+        grid_panel.draw_panel(&mut d, &mouse_context);
+        /* -------------------- DRAW GRID -------------------- */
+
+
         /* -------------------- DRAW PALLET -------------------- */
         for i in 0..icon_server.assets.len() {
             let name = icon_server.assets[i].0.clone();
@@ -268,38 +263,14 @@ fn main() {
                 rec.x as i32, rec.y as i32, PALLET_TEXTURE_TINT
             );
         }
+        /* -------------------- DRAW PALLET -------------------- */
+
 
         /* -------------------- FILE DIALOG -------------------- */
-    
-        // draw panel
         file_dialog_context
             .to_panel(&mut d)
             .draw_panel(&mut d, &mouse_context);
-
-
-        // TESTING
-        // TESTING
-        // TESTING
-        // TESTING
-        // TESTING
-
-        let mut grid_panel = GridDrawPanel::new_at_position(Vector2::new(300.0, 25.0));
-        grid_panel.item_width  = 64;
-        grid_panel.item_height = 64;
-
-        for _i in 0..10 {
-            let texture = icon_server.get_default_handle().texture.as_ref().unwrap();
-
-            grid_panel.add(texture);
-        }
-
-        grid_panel.draw_panel(&mut d, &mouse_context);
-
-        // TESTING
-        // TESTING
-        // TESTING
-        // TESTING
-        // TESTING
+        /* -------------------- FILE DIALOG -------------------- */
     }
 }
 

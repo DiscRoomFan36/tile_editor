@@ -34,6 +34,11 @@ impl<T> TileGrid<T> {
         return &self.tiles[pos_to_index(pos, self.size())].item;
     }
 
+    pub fn get_from_index(&self, index: usize) -> &Option<T> {
+        assert!(index < self.tiles.len());
+        return &self.tiles[index].item;
+    }
+
     pub fn set(&mut self, pos: (usize, usize), current: Option<T>) {
         let index = pos_to_index(pos, self.size());
         self.tiles[index].item = current;
