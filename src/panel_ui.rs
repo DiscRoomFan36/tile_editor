@@ -542,12 +542,13 @@ pub struct GridDrawPanel<T : DrawableObject> {
 	drag_context: PanelUiDragContext,
 
 	// true if by cols, false if by rows
-	pub by_cols: bool,
+	by_cols: bool,
 	// this controls how many items in a row or col before
 	// moving onto the next row/col. cannot be 0
 	run_length: usize,
 
 	grid_array: Vec<T>,
+	highlights_array: Vec<Vec<Color>>,
 
 	// remove pub?
 	pub item_width  : i32,
@@ -575,7 +576,13 @@ impl<T : DrawableObject> GridDrawPanel<T>  {
 	}
 
 	pub fn add(&mut self, new_object: T) {
-		self.grid_array.push(new_object)
+		self.grid_array.push(new_object);
+		self.highlights_array.push(vec![]);
+	}
+
+	pub fn add_with_highlight(&mut self, new_object: T, highlight_array: &[Color]) {
+		self.grid_array.push(new_object);
+		self.highlights_array.push(highlight_array.to_vec());
 	}
 
 	fn length_helper(&self, by_cols: bool, length: i32) -> i32 {
@@ -616,6 +623,38 @@ impl<T : DrawableObject> GridDrawPanel<T>  {
 			height : self.item_height as f32,
 		}
 	}
+
+	fn draw_highlights(&self, d: &mut RaylibDrawHandle, rec: Rectangle, colors: &[Color]) {
+		if colors.len() == 0 { return; }
+
+		// backing color
+		let rec = pad_rectangle(rec, (self.item_padding / 2) as f32);
+		d.draw_rectangle_rec(rec, colors[0]);
+
+		if colors.len() == 1 { return; }
+
+		{ // to the left
+			let mut rec = rec;
+			rec.width /= 2.0;
+			d.draw_rectangle_rec(rec, colors[1]);
+		}
+
+		if colors.len() == 2 { return; }
+
+		// cool middle stripes
+		let top_stripe = Rectangle {
+			x: rec.x + rec.width / 3.0,  y: rec.y,
+			width: rec.width / 3.0,     height: rec.height,
+		};
+		let middle_stripe = Rectangle {
+			x: rec.x,              y: rec.y + rec.height / 3.0,
+			width: rec.width, height: rec.height / 3.0,
+		};
+		d.draw_rectangle_rec(top_stripe, colors[2]);
+		d.draw_rectangle_rec(middle_stripe, colors[2]);
+
+		if colors.len() > 3 { panic!("Currently do not handle more than 3 colors in panel highlight") }
+	}
 }
 
 impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
@@ -627,6 +666,7 @@ impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
 			run_length       : 5,
 			
 			grid_array       : vec![],
+			highlights_array : vec![],
 			
 			item_width       : 64,
 			item_height      : 64,
@@ -671,12 +711,14 @@ impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
 		for (i, drawable) in self.grid_array.iter().enumerate() {
 			let rec = self.rec_of_item_at(i, position);
 
+			let mut highlights = self.highlights_array[i].clone();
 			if let Some(highlight_color) = self.highlight_color {
 				if hovered == Some(i) {
-					let pad_rec = pad_rectangle(rec, (self.item_padding / 2) as f32);
-					d.draw_rectangle_rec(pad_rec, highlight_color);
+					highlights.push(highlight_color);
 				}
 			}
+
+			self.draw_highlights(d, rec, &highlights);
 
 			drawable.draw(d, rec);
 		}

@@ -18,9 +18,10 @@ use raylib::consts::{KeyboardKey, MouseButton};
 const WINDOW_WIDTH  : i32 = 800;
 const WINDOW_HEIGHT : i32 = 600;
 
-const SQUARE_SIZE       : f32 = 64.0;
-const SQUARE_SPACING    : f32 = 10.0;
-const HIGHLIGHT_PADDING : f32 = SQUARE_SPACING / 2.0;
+const SQUARE_SIZE       : i32 = 64;
+const SQUARE_SIZE_F     : f32 = SQUARE_SIZE as f32;
+const SQUARE_SPACING    : i32 = 10;
+const SQUARE_SPACING_F  : f32 = SQUARE_SPACING as f32;
 
 const QUICK_SAVE_FILE : &str = "quick-save.json";
 
@@ -31,19 +32,16 @@ const PALLET_PER_ROW : usize = 3;
 
 const TEXT_SIZE    : i32 = 20;
 const TEXT_PADDING : i32 = 10;
-const ITEM_PADDING: i32 = 4;
 
 
 const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
 
-const GRID_TEXTURE_TINT                     : Color = Color::WHITE;
-
 const HIGHLIGHT_COLOR                       : Color = Color::ORANGE;
 const PALLET_SELECTED_COLOR                 : Color = Color::RED;
 const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
-const PALLET_TEXTURE_TINT                   : Color = GRID_TEXTURE_TINT;
 
-const GRID_START_POSITION: Vector2 = Vector2::new(100.0, 100.0);
+const GRID_START_POSITION   : Vector2 = Vector2::new(100.0, 100.0);
+const PALLET_START_POSITION : Vector2 = Vector2::new(10.0, 10.0);
 
 struct ImageContainer {
     image: Image,
@@ -179,7 +177,7 @@ fn main() {
         if textures_dirty {
             for (_, image_container) in icon_server.assets.iter_mut() {
                 let mut image = image_container.image.clone();
-                image.resize(SQUARE_SIZE as i32, SQUARE_SIZE as i32);
+                image.resize(SQUARE_SIZE_F as i32, SQUARE_SIZE_F as i32);
                 
                 let texture = rl.load_texture_from_image(&thread, &image).expect("load texture");
                 image_container.texture = Some(texture)
@@ -216,54 +214,29 @@ fn main() {
         grid_panel.draw_panel(&mut d, &mouse_context);
         /* -------------------- DRAW GRID -------------------- */
 
-
         /* -------------------- DRAW PALLET -------------------- */
-        for i in 0..icon_server.assets.len() {
-            let name = icon_server.assets[i].0.clone();
-            let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
+        let mut pallet_panel = GridDrawPanel::new_custom(
+            PALLET_START_POSITION,
+            true, 3,
+            SQUARE_SIZE, SQUARE_SIZE, SQUARE_SPACING,
+            Some(HIGHLIGHT_COLOR), None
+        );
 
-            let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
-            let padding_rec = pad_rectangle(rec, HIGHLIGHT_PADDING);
+        for (name, image_container) in icon_server.assets.iter() {
 
-            // Default and selected highlighting
-            let is_default = icon_server.get_default_name() == name;
-            let is_selected = icon_server.get_selected_name() == name;
+            let mut highlights = vec![];
 
+            if icon_server.get_default_name()  == name { highlights.push(PALLET_DEFAULT_COLOR) }
+            if icon_server.get_selected_name() == name { highlights.push(PALLET_SELECTED_COLOR) }
 
-            if is_default {
-                d.draw_rectangle_rec(padding_rec, PALLET_DEFAULT_COLOR);
-            }    
-            if is_selected {
-                let mut padding_rec = padding_rec;
-                if is_default { padding_rec.width /= 2.0; }
-                d.draw_rectangle_rec(padding_rec, PALLET_SELECTED_COLOR);
-            }
+            let texture = image_container.texture.as_ref().unwrap();
 
-            if *mouse_context.hovering_over_pallet.get(i).unwrap_or(&false) {
-                if is_default || is_selected {
-                    let top_stripe = Rectangle {
-                        x: padding_rec.x + padding_rec.width / 3.0,  y: padding_rec.y,
-                        width: padding_rec.width / 3.0,              height: padding_rec.height,
-                    };
-                    let middle_stripe = Rectangle {
-                        x: padding_rec.x,                            y: padding_rec.y + padding_rec.height / 3.0,
-                        width: padding_rec.width,                    height: padding_rec.height / 3.0,
-                    };
-                    d.draw_rectangle_rec(top_stripe, HIGHLIGHT_COLOR);
-                    d.draw_rectangle_rec(middle_stripe, HIGHLIGHT_COLOR);
-                } else {
-                    d.draw_rectangle_rec(pad_rectangle(rec, HIGHLIGHT_PADDING), HIGHLIGHT_COLOR);
-                }
-            }
-
-            let (_, image_container) = &icon_server.assets[i];
-
-            d.draw_texture(
-                image_container.texture.as_ref().unwrap(),
-                rec.x as i32, rec.y as i32, PALLET_TEXTURE_TINT
-            );
+            pallet_panel.add_with_highlight(texture, &highlights);
         }
+
+        pallet_panel.draw_panel(&mut d, &mouse_context);
         /* -------------------- DRAW PALLET -------------------- */
+
 
 
         /* -------------------- FILE DIALOG -------------------- */
@@ -277,9 +250,9 @@ fn main() {
 fn new_square(start_pos: Vector2, pos: (usize, usize)) -> Rectangle {
     let (x, y) = pos;
     Rectangle {
-        x: start_pos.x + x as f32 * (SQUARE_SIZE + SQUARE_SPACING),
-        y: start_pos.y + y as f32 * (SQUARE_SIZE + SQUARE_SPACING),
-        width: SQUARE_SIZE, height: SQUARE_SIZE,
+        x: start_pos.x + x as f32 * (SQUARE_SIZE_F + SQUARE_SPACING_F),
+        y: start_pos.y + y as f32 * (SQUARE_SIZE_F + SQUARE_SPACING_F),
+        width: SQUARE_SIZE_F, height: SQUARE_SIZE_F,
     }
 }
 

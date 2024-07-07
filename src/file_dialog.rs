@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 
 use raylib::prelude::*;
 
-use crate::{MouseContext, TEXT_PADDING, TEXT_SIZE, ITEM_PADDING};
+use crate::{MouseContext, TEXT_PADDING, TEXT_SIZE};
 
 use crate::panel_ui::*;
 
-
+const ITEM_PADDING : i32 = 4;
 
 const FILE_DIALOG_SELECT_FOLDER_TEXT : &str = "Select Folder";
 
@@ -19,7 +19,7 @@ const FILE_DIALOG_LABEL_BACKGROUND_COLOR    : Color = Color::DARKGRAY;
 const FILE_DIALOG_LABEL_HOVER_COLOR         : Color = Color::ORANGE;
 const FILE_DIALOG_LABEL_TEXT_COLOR          : Color = Color::GOLD;
 
-const FILE_DIALOG_SELECT_BACKGROUND_COLOR      : Color = Color::GREEN;
+const FILE_DIALOG_SELECT_BACKGROUND_COLOR   : Color = Color::GREEN;
 const FILE_DIALOG_SELECT_HOVER_COLOR        : Color = Color::WHEAT;
 const FILE_DIALOG_SELECT_TEXT_COLOR         : Color = Color::BLACK;
 
