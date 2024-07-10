@@ -538,7 +538,7 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 }
 
 
-pub struct GridDrawPanel<T : DrawableObject> {
+pub struct GridPanel<T : DrawableObject> {
 	drag_context: PanelUiDragContext,
 
 	// true if by cols, false if by rows
@@ -547,7 +547,8 @@ pub struct GridDrawPanel<T : DrawableObject> {
 	// moving onto the next row/col. cannot be 0
 	run_length: usize,
 
-	grid_array: Vec<T>,
+	// grid_array: Vec<T>,
+	grid_array: Vec<Option<T>>,
 	highlights_array: Vec<Vec<Color>>,
 
 	// remove pub?
@@ -560,7 +561,7 @@ pub struct GridDrawPanel<T : DrawableObject> {
 	pub background_color : Option<Color>,
 }
 
-impl<T : DrawableObject> GridDrawPanel<T>  {
+impl<T : DrawableObject> GridPanel<T>  {
 	pub fn new_custom(
 		position: Vector2,
 		by_cols: bool, run_length: usize,
@@ -576,12 +577,18 @@ impl<T : DrawableObject> GridDrawPanel<T>  {
 	}
 
 	pub fn add(&mut self, new_object: T) {
-		self.grid_array.push(new_object);
+		self.grid_array.push(Some(new_object));
+		self.highlights_array.push(vec![]);
+	}
+
+	// add a blank object, for spacing and stuff
+	pub fn add_none(&mut self) {
+		self.grid_array.push(None);
 		self.highlights_array.push(vec![]);
 	}
 
 	pub fn add_with_highlight(&mut self, new_object: T, highlight_array: &[Color]) {
-		self.grid_array.push(new_object);
+		self.grid_array.push(Some(new_object));
 		self.highlights_array.push(highlight_array.to_vec());
 	}
 
@@ -657,7 +664,7 @@ impl<T : DrawableObject> GridDrawPanel<T>  {
 	}
 }
 
-impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
+impl<T : DrawableObject> PanelLike for GridPanel<T> {
 	fn new() -> Self {
 		Self {
 			drag_context     : PanelUiDragContext::default(),
@@ -709,6 +716,9 @@ impl<T : DrawableObject> PanelLike for GridDrawPanel<T> {
 		let hovered = self.get_hovered_id_at(mouse_context, position);
 
 		for (i, drawable) in self.grid_array.iter().enumerate() {
+			if drawable.is_none() { continue; }
+			let drawable = drawable.as_ref().unwrap();
+
 			let rec = self.rec_of_item_at(i, position);
 
 			let mut highlights = self.highlights_array[i].clone();

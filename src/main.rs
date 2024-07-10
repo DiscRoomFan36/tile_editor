@@ -1,8 +1,10 @@
+mod mouse_context;
 mod tile_grid;
 mod icon_server;
 mod panel_ui;
 mod file_dialog;
 
+use mouse_context::*;
 use tile_grid::*;
 use icon_server::*;
 use panel_ui::*;
@@ -13,7 +15,6 @@ use std::io::{Read, Write};
 use std::path::{Component, Path};
 
 use raylib::prelude::*;
-use raylib::consts::{KeyboardKey, MouseButton};
 
 const WINDOW_WIDTH  : i32 = 800;
 const WINDOW_HEIGHT : i32 = 600;
@@ -28,8 +29,6 @@ const QUICK_SAVE_FILE : &str = "quick-save.json";
 // TODO: Remove hardcode? is it good to have something in the pallet at startup?
 const PATH            : &str = "./assets/icons";
 
-const PALLET_PER_ROW : usize = 3;
-
 const TEXT_SIZE    : i32 = 20;
 const TEXT_PADDING : i32 = 10;
 
@@ -37,30 +36,9 @@ const TEXT_PADDING : i32 = 10;
 const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
 
 const HIGHLIGHT_COLOR                       : Color = Color::ORANGE;
-const PALLET_SELECTED_COLOR                 : Color = Color::RED;
-const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
 
 const GRID_START_POSITION   : Vector2 = Vector2::new(100.0, 100.0);
-const PALLET_START_POSITION : Vector2 = Vector2::new(10.0, 10.0);
 
-struct ImageContainer {
-    image: Image,
-    texture: Option<Texture2D>,
-}
-
-#[derive(Debug, Default)]
-struct MouseContext {
-    mouse_pos   :  Vector2,
-    mouse_delta : Vector2,
-    mouse_left_pressed  : bool,
-    mouse_left_released : bool,
-    mouse_right_pressed : bool,
-
-    hovering_over_pallet             : Vec<bool>,
-    hovering_over_grid               : Vec<bool>,
-
-    over_file_dialog : bool,
-}
 
 fn main() {
     let assets = get_images_from_path(Path::new(PATH));
@@ -144,18 +122,7 @@ fn main() {
         }
 
         /* -------------------- MOUSE EVENT HANDLERS -------------------- */
-        let mut mouse_context = MouseContext {
-            mouse_pos           : rl.get_mouse_position(),
-            mouse_delta         : rl.get_mouse_delta(),
-            mouse_left_pressed  : rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT),
-            mouse_left_released : rl.is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT),
-            mouse_right_pressed : rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT),
-    
-            hovering_over_pallet             : vec![false; icon_server.assets.len()],
-            hovering_over_grid               : vec![false; grid.rows*grid.cols],
-
-            over_file_dialog : false,
-        };
+        let mut mouse_context = MouseContext ::make_context(&rl);
         
         // don't need to check if open, dose that automatically 
         let new_image = file_dialog_context.update(&mouse_context, &mut rl);
@@ -169,10 +136,6 @@ fn main() {
             textures_dirty = true; // Remember to call when adding images
         }
 
-        update_pallet_mouse_events(&mut mouse_context, &mut icon_server);
-
-        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, GRID_START_POSITION);
-
         /* -------------------- LOAD TEXTURES -------------------- */
         if textures_dirty {
             for (_, image_container) in icon_server.assets.iter_mut() {
@@ -185,6 +148,11 @@ fn main() {
 
             textures_dirty = false;
         }
+        /* -------------------- LOAD TEXTURES -------------------- */
+
+        icon_server.update_pallet(&mouse_context);
+
+        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, GRID_START_POSITION);
         
         /* -------------------- DRAWING -------------------- */
         let mut d = rl.begin_drawing(&thread);
@@ -194,7 +162,7 @@ fn main() {
 
         // TODO: Move the grid out of the way
         /* -------------------- DRAW GRID -------------------- */
-        let mut grid_panel = GridDrawPanel::new_custom(
+        let mut grid_panel = GridPanel::new_custom(
             GRID_START_POSITION,
             true, grid.cols,
             64, 64, 10,
@@ -208,31 +176,17 @@ fn main() {
                 icon_server.get_default_handle()
             };
 
-            grid_panel.add(image_container.texture.as_ref().unwrap());
+            let texture = image_container.texture.as_ref();
+            if texture.is_none() { grid_panel.add_none(); continue; }
+
+            grid_panel.add(texture.unwrap());
         }
 
         grid_panel.draw_panel(&mut d, &mouse_context);
         /* -------------------- DRAW GRID -------------------- */
 
         /* -------------------- DRAW PALLET -------------------- */
-        let mut pallet_panel = GridDrawPanel::new_custom(
-            PALLET_START_POSITION,
-            true, 3,
-            SQUARE_SIZE, SQUARE_SIZE, SQUARE_SPACING,
-            Some(HIGHLIGHT_COLOR), None
-        );
-
-        for (name, image_container) in icon_server.assets.iter() {
-
-            let mut highlights = vec![];
-
-            if icon_server.get_default_name()  == name { highlights.push(PALLET_DEFAULT_COLOR) }
-            if icon_server.get_selected_name() == name { highlights.push(PALLET_SELECTED_COLOR) }
-
-            let texture = image_container.texture.as_ref().unwrap();
-
-            pallet_panel.add_with_highlight(texture, &highlights);
-        }
+        let pallet_panel = icon_server.to_pallet_panel();
 
         pallet_panel.draw_panel(&mut d, &mouse_context);
         /* -------------------- DRAW PALLET -------------------- */
@@ -296,31 +250,6 @@ fn get_images_from_path(path: &Path) -> Vec<(String, ImageContainer)> {
 }
 
 
-
-fn update_pallet_mouse_events(
-    mouse_context: &mut MouseContext,
-    icon_server: &mut MyIconServer<ImageContainer>,
-) {
-    if mouse_context.over_file_dialog { return; }
-
-    for i in 0..icon_server.assets.len() {
-        let name = icon_server.assets[i].0.clone();
-        let (x, y) = index_to_pos(i, (999, PALLET_PER_ROW));
-
-        let rec = new_square(Vector2::new(10.0, 10.0), (x, y));
-
-        if rec.check_collision_point_rec(mouse_context.mouse_pos) {
-            mouse_context.hovering_over_pallet[i] = true;
-            if mouse_context.mouse_left_pressed {
-                icon_server.set_selected_by_name(&name);
-            }
-            if mouse_context.mouse_right_pressed {
-                icon_server.set_default_by_name(&name);
-            }
-        }
-    }
-}
-
 fn update_grid_mouse_events(
     mouse_context: &mut MouseContext,
     icon_server: &mut MyIconServer<ImageContainer>,
@@ -334,7 +263,6 @@ fn update_grid_mouse_events(
         let rec = new_square(start_pos, (x, y));
         
         if rec.check_collision_point_rec(mouse_context.mouse_pos) {
-            mouse_context.hovering_over_grid[i] = true;
             if mouse_context.mouse_left_pressed {
                 grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
             }

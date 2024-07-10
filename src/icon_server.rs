@@ -42,11 +42,15 @@ impl<T> MyIconServer<T> {
             .expect("self.default_icon is valid")
     }
 
+    // TODO
+    // pub fn set_selected_by_id(&mut self, id: usize) { todo() }
     pub fn set_selected_by_name(&mut self, name: &str) {
         assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
         self.selected = name.to_owned();
     }
 
+    // TODO
+    // pub fn set_default_by_id(&mut self, id: usize) { todo() }
     pub fn set_default_by_name(&mut self, name: &str) {
         assert!(self.assets.iter().any(|(asset_name, _)| name == asset_name));
         self.default_icon = name.to_owned();
@@ -77,5 +81,65 @@ impl<T> MyIconServer<T> {
 
     pub fn cycle_default(&mut self, count: i32) {
         self.default_icon = self.cycle_icon(&self.default_icon, count).to_owned();
+    }
+}
+
+
+use raylib::prelude::*;
+
+use crate::{GridPanel, MouseContext, PanelLike, HIGHLIGHT_COLOR, SQUARE_SIZE, SQUARE_SPACING};
+
+const PALLET_SELECTED_COLOR                 : Color = Color::RED;
+const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
+
+const PALLET_START_POSITION : Vector2 = Vector2::new(10.0, 10.0);
+
+
+pub struct ImageContainer {
+    pub image: Image,
+    pub texture: Option<Texture2D>,
+}
+
+impl MyIconServer<ImageContainer> {
+    pub fn to_pallet_panel(&self) -> GridPanel<&Texture2D> {
+        let mut panel = GridPanel::new_custom(
+            PALLET_START_POSITION,
+            true, 3,
+            SQUARE_SIZE, SQUARE_SIZE, SQUARE_SPACING,
+            Some(HIGHLIGHT_COLOR), None
+        );
+
+        for (name, image_container) in self.assets.iter() {
+            let texture = image_container.texture.as_ref();
+
+            if texture.is_none() { panel.add_none(); continue; }
+
+            let mut highlights = vec![];
+
+            if self.get_default_name()  == name { highlights.push(PALLET_DEFAULT_COLOR) }
+            if self.get_selected_name() == name { highlights.push(PALLET_SELECTED_COLOR) }
+
+            panel.add_with_highlight(texture.unwrap(), &highlights);
+        }
+
+        return panel;
+    }
+
+    pub fn update_pallet(&mut self, mouse_context: &MouseContext) {
+        let pallet_panel = self.to_pallet_panel();
+
+        let id = pallet_panel.get_hovered_id(&mouse_context);
+
+        if id.is_none() { return; }
+        let id = id.unwrap();
+        
+        let name = self.assets[id].0.clone();
+
+        if mouse_context.mouse_left_pressed {
+            self.set_selected_by_name(&name);
+        }
+        if mouse_context.mouse_right_pressed {
+            self.set_default_by_name(&name);
+        }
     }
 }
