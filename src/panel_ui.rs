@@ -469,19 +469,18 @@ impl<T : PanelLike> PanelLike for PanelColumn<T> {
 		return None;
 	}
 	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, mut position: Vector2) -> Vec<usize> {
-		self.get_hovered_id_at(mouse_context, position)
-			.map(|id| {
-				(0..id)
-					.map(|i| &self.panel_array[i])
-					.for_each(|panel| position.y += panel.height());
+		let Some(id) = self.get_hovered_id_at(mouse_context, position) else {
+			return vec![];
+		};
 
-				[
-					vec![id],
-					self.panel_array[id].get_hovered_id_recursively_at(mouse_context, position),
-				].concat()
+		(0..id)
+			.map(|i| &self.panel_array[i])
+			.for_each(|panel| position.y += panel.height());
 
-			})
-			.unwrap_or_default()
+		[
+			vec![id],
+			self.panel_array[id].get_hovered_id_recursively_at(mouse_context, position),
+		].concat()
 	}
 
 	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
@@ -547,7 +546,6 @@ pub struct GridPanel<T : DrawableObject> {
 	// moving onto the next row/col. cannot be 0
 	run_length: usize,
 
-	// grid_array: Vec<T>,
 	grid_array: Vec<Option<T>>,
 	highlights_array: Vec<Vec<Color>>,
 
@@ -561,7 +559,7 @@ pub struct GridPanel<T : DrawableObject> {
 	pub background_color : Option<Color>,
 }
 
-impl<T : DrawableObject> GridPanel<T>  {
+impl<T : DrawableObject> GridPanel<T> {
 	pub fn new_custom(
 		position: Vector2,
 		by_cols: bool, run_length: usize,
@@ -731,6 +729,92 @@ impl<T : DrawableObject> PanelLike for GridPanel<T> {
 			self.draw_highlights(d, rec, &highlights);
 
 			drawable.draw(d, rec);
+		}
+	}
+}
+
+
+// returns mut-able references to its panels, an overarching thing that will help with over_file_dialog stuff
+pub struct WindowPanel<'a> {
+	drag_context: PanelUiDragContext,
+
+	width: i32,
+	height: i32,
+
+	array: Vec<Box<&'a dyn PanelLike>>,
+}
+
+impl<'a> WindowPanel<'a> {
+	fn new_custom(position: Vector2, width: i32, height: i32) -> Self {
+		Self {
+			width, height,
+			..Self::new_at_position(position)
+		}
+	}
+
+	fn add(&mut self, panel: Box<&'a dyn PanelLike>) {
+		self.array.push(panel);
+	}
+}
+
+impl PanelLike for WindowPanel<'_> {
+	fn new() -> Self where Self: Sized {
+		Self {
+			drag_context: PanelUiDragContext::default(),
+
+			width: 0,
+			height: 0,
+
+			array: vec![],
+		}
+	}
+
+	fn width (&self) -> f32 { self.width  as f32 }
+	fn height(&self) -> f32 { self.height as f32 }
+
+	fn set_width (&mut self, width : f32) { self.width  = width  as i32; }
+	fn set_height(&mut self, height: f32) { self.height = height as i32; }
+
+	fn get_drag_context(&self) -> PanelUiDragContext { self.drag_context }
+	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) { self.drag_context = drag_context; }
+
+	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
+		for (i, panel) in self.array.iter().enumerate() {
+			let panel_pos = position + panel.get_position();
+			if panel.mouse_over_panel_at(mouse_context, panel_pos) {
+				return Some(i);
+			}
+		}
+		return None;
+	}
+
+	fn get_hovered_id_recursively_at(&self, mouse_context: &MouseContext, position: Vector2) -> Vec<usize> {
+		let Some(id) = self.get_hovered_id_at(mouse_context, position) else {
+			return vec![];
+		};
+
+		let panel = &self.array[id];
+		let panel_pos = position + panel.get_position();
+
+		[
+			vec![id],
+			panel.get_hovered_id_recursively_at(mouse_context, panel_pos),
+		].concat()
+	}
+
+	fn draw_panel_at(&self, d: &mut RaylibDrawHandle, mouse_context: &MouseContext, position: Vector2) {
+		let hovered = self.get_hovered_id_at(mouse_context, position);
+
+		// draw back to front
+		for (i, panel) in self.array.iter().enumerate().rev() {
+			let mouse_context: MouseContext = if Some(i) == hovered {
+				*mouse_context
+			} else {
+				MouseContext::inactive()
+			};
+
+			let panel_pos = panel.get_position();
+			panel.draw_panel_at(d, &mouse_context, position + panel_pos);
 		}
 	}
 }
