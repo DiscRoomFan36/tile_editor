@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use raylib::prelude::*;
 
+use crate::{WINDOW_WIDTH, WINDOW_HEIGHT};
 use crate::{MouseContext, TEXT_PADDING, TEXT_SIZE};
 
 use crate::panel_ui::*;
@@ -96,6 +97,19 @@ impl FileDialogContext {
 	// return an image to load
 	pub fn update(&mut self, mouse_context: &MouseContext, rl: &mut impl CanMeasureText) -> Option<PathBuf> {
 		let mut file_dialog_panel = self.to_panel(rl);
+
+		let window_rec = Rectangle {
+			x: 0.0, y: 0.0,
+			width: WINDOW_WIDTH as f32,
+			height: WINDOW_HEIGHT as f32,
+		};
+
+		if !self.is_open {
+			if !rec_contains_rec(window_rec, file_dialog_panel.as_rec()) {
+				self.drag_context.position = FILE_DIALOG_START_POSITION;
+			}
+			return None;
+		}
 
 		let file_names = list_directory(&self.current_path);
 

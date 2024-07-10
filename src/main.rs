@@ -31,14 +31,11 @@ const PATH            : &str = "./assets/icons";
 const TEXT_SIZE    : i32 = 20;
 const TEXT_PADDING : i32 = 10;
 
-
-const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
-
+const BACKGROUND_COLOR      : Color = Color::LIGHTGRAY;
+const HIGHLIGHT_COLOR       : Color = Color::ORANGE;
 
 const PALLET_SELECTED_COLOR : Color = Color::RED;
 const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
-
-const HIGHLIGHT_COLOR                       : Color = Color::ORANGE;
 
 const GRID_START_POSITION   : Vector2 = Vector2::new(100.0, 100.0);
 const PALLET_START_POSITION : Vector2 = Vector2::new(10.0, 10.0);
@@ -63,10 +60,6 @@ fn main() {
         grid: TileGrid::new(4, 6),
     };
 
-    // let mut icon_server = MyIconServer::new(assets);
-
-    // let mut grid = TileGrid::new(4, 6);
-
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .title("Tile Editor")
@@ -77,7 +70,7 @@ fn main() {
     let mut file_dialog_context = FileDialogContext::new();
 
 
-    // let dirty = true; // TODO: refactor for this
+    // let dirty = true; // TODO: refactor for this, maybe?
     let mut textures_dirty = true;
 
 
@@ -134,21 +127,26 @@ fn main() {
                 if file_dialog_context.current_path.components().any(|p| p == Component::ParentDir) {
                     file_dialog_context.current_path = ".".into();
                 }
-
-                if file_dialog_context.drag_context.position.x > WINDOW_WIDTH  as f32 || file_dialog_context.drag_context.position.x < 0.0
-                || file_dialog_context.drag_context.position.y > WINDOW_HEIGHT as f32 || file_dialog_context.drag_context.position.y < 0.0 {
-                    // TODO: do something about this
-                    file_dialog_context.drag_context.position = FILE_DIALOG_START_POSITION;
-                }
             }
         }
 
         /* -------------------- MOUSE EVENT HANDLERS -------------------- */
         let mouse_context = MouseContext ::make_context(&rl);
-        
-        // don't need to check if open, dose that automatically 
-        let new_image = file_dialog_context.update(&mouse_context, &mut rl);
-        textures_dirty |= grid_handler.add_images(new_image);
+
+
+        { // Update things
+            let mut mouse_context = mouse_context;
+
+            let new_image = file_dialog_context.update(&mouse_context, &mut rl);
+            textures_dirty |= grid_handler.add_images(new_image);
+            if file_dialog_context.to_panel(&mut rl).mouse_over_panel(&mouse_context) {
+                mouse_context = MouseContext::inactive();
+            }
+
+            grid_handler.update_pallet(&mouse_context);
+
+            grid_handler.update_grid(&mouse_context);
+        }
 
         /* -------------------- LOAD TEXTURES -------------------- */
         if textures_dirty {
@@ -162,34 +160,29 @@ fn main() {
 
             textures_dirty = false;
         }
-        /* -------------------- LOAD TEXTURES -------------------- */
-
-        grid_handler.update(&mouse_context);
+        /* -------------------- LOAD TEXTURES END -------------------- */
         
         /* -------------------- DRAWING -------------------- */
         let mut d = rl.begin_drawing(&thread);
 
         d.clear_background(BACKGROUND_COLOR);
 
+        { // Draw things
+            let mut window_panel = WindowPanel::new_custom(Vector2::zero(), WINDOW_WIDTH, WINDOW_HEIGHT);
+            
+            let file_dialog_panel = file_dialog_context.to_panel(&mut d);
+            window_panel.add(Box::new(&file_dialog_panel));
+            
+            let pallet_panel = grid_handler.to_pallet_panel();
+            window_panel.add(Box::new(&pallet_panel));
+            
+            // TODO: Move the grid out of the way
+            let grid_panel = grid_handler.to_grid_panel();
+            window_panel.add(Box::new(&grid_panel));
 
-        // TODO: Move the grid out of the way
-        /* -------------------- DRAW GRID -------------------- */
-        let grid_panel = grid_handler.to_grid_panel();
-        grid_panel.draw_panel(&mut d, &mouse_context);
-        /* -------------------- DRAW GRID -------------------- */
-
-        /* -------------------- DRAW PALLET -------------------- */
-        let pallet_panel = grid_handler.to_pallet_panel();
-        pallet_panel.draw_panel(&mut d, &mouse_context);
-        /* -------------------- DRAW PALLET -------------------- */
-
-
-
-        /* -------------------- FILE DIALOG -------------------- */
-        file_dialog_context
-            .to_panel(&mut d)
-            .draw_panel(&mut d, &mouse_context);
-        /* -------------------- FILE DIALOG -------------------- */
+            window_panel.draw_panel(&mut d, &mouse_context);
+        }
+        /* -------------------- DRAWING END -------------------- */
     }
 }
 
@@ -286,11 +279,6 @@ impl<'a> GridHandler {
         return panel;
     }
 
-    fn update(&mut self, mouse_context: &MouseContext) {
-        self.update_pallet(mouse_context);
-        self.update_grid(mouse_context);
-    }
-
     fn update_grid(&mut self, mouse_context: &MouseContext) {
         let grid_pallet = self.to_grid_panel();
 
@@ -335,3 +323,17 @@ impl<'a> GridHandler {
         return true; // textures_dirty = true; // Remember to call when adding images
     }
 }
+
+// fn window_to_panel<'a>(grid_handler: &'a GridHandler, file_dialog_context: &'a FileDialogContext, rl: &mut RaylibHandle) -> WindowPanel<'a> {
+//     let mut window_panel = WindowPanel::new_custom(Vector2::zero(), WINDOW_WIDTH, WINDOW_HEIGHT);
+
+//     let file_dialog_panel = file_dialog_context.to_panel(rl);
+//     let pallet_panel = grid_handler.to_pallet_panel();
+//     let grid_panel = grid_handler.to_grid_panel();
+    
+//     window_panel.add(Box::new(file_dialog_panel));
+//     window_panel.add(Box::new(pallet_panel));
+//     window_panel.add(Box::new(grid_panel));
+
+//     return window_panel;
+// }

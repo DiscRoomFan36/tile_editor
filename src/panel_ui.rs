@@ -382,6 +382,11 @@ pub fn point_rec_collision(point: Vector2, rec: Rectangle) -> bool {
 	    && (rec.y <= point.y && point.y <= rec.y + rec.height);
 }
 
+pub fn rec_contains_rec(outer: Rectangle, inner: Rectangle) -> bool {
+	(outer.x < inner.x) && (inner.x + inner.width  < outer.x + outer.width ) &&
+	(outer.y < inner.y) && (inner.y + inner.height < outer.y + outer.height)
+}
+
 pub fn pad_rectangle_ex(rec: Rectangle, left: f32, right: f32, top: f32, bottom: f32) -> Rectangle {
     Rectangle {
         x:      rec.x      - left,
@@ -741,23 +746,26 @@ pub struct WindowPanel<'a> {
 	width: i32,
 	height: i32,
 
-	array: Vec<Box<&'a dyn PanelLike>>,
+	pub panel_array: Vec<Box<&'a dyn PanelLike>>,
 }
 
 impl<'a> WindowPanel<'a> {
-	fn new_custom(position: Vector2, width: i32, height: i32) -> Self {
+	pub fn new_custom(position: Vector2, width: i32, height: i32) -> Self {
 		Self {
 			width, height,
 			..Self::new_at_position(position)
 		}
 	}
 
-	fn add(&mut self, panel: Box<&'a dyn PanelLike>) {
-		self.array.push(panel);
+	pub fn add(&mut self, panel: Box<&'a dyn PanelLike>) {
+		self.panel_array.push(panel);
 	}
+
+	// TODO: force window panels into width/height
 }
 
 impl PanelLike for WindowPanel<'_> {
+// impl PanelLike for WindowPanel {
 	fn new() -> Self where Self: Sized {
 		Self {
 			drag_context: PanelUiDragContext::default(),
@@ -765,7 +773,7 @@ impl PanelLike for WindowPanel<'_> {
 			width: 0,
 			height: 0,
 
-			array: vec![],
+			panel_array: vec![],
 		}
 	}
 
@@ -779,7 +787,7 @@ impl PanelLike for WindowPanel<'_> {
 	fn set_drag_context(&mut self, drag_context: PanelUiDragContext) { self.drag_context = drag_context; }
 
 	fn get_hovered_id_at(&self, mouse_context: &MouseContext, position: Vector2) -> Option<usize> {
-		for (i, panel) in self.array.iter().enumerate() {
+		for (i, panel) in self.panel_array.iter().enumerate() {
 			let panel_pos = position + panel.get_position();
 			if panel.mouse_over_panel_at(mouse_context, panel_pos) {
 				return Some(i);
@@ -793,7 +801,7 @@ impl PanelLike for WindowPanel<'_> {
 			return vec![];
 		};
 
-		let panel = &self.array[id];
+		let panel = &self.panel_array[id];
 		let panel_pos = position + panel.get_position();
 
 		[
@@ -806,7 +814,7 @@ impl PanelLike for WindowPanel<'_> {
 		let hovered = self.get_hovered_id_at(mouse_context, position);
 
 		// draw back to front
-		for (i, panel) in self.array.iter().enumerate().rev() {
+		for (i, panel) in self.panel_array.iter().enumerate().rev() {
 			let mouse_context: MouseContext = if Some(i) == hovered {
 				*mouse_context
 			} else {
