@@ -87,10 +87,12 @@ impl<T> MyIconServer<T> {
 
 use raylib::prelude::*;
 
-use crate::{GridPanel, MouseContext, PanelLike, HIGHLIGHT_COLOR, SQUARE_SIZE, SQUARE_SPACING};
+use crate::panel_ui::{GridPanel, PanelLike};
 
-const PALLET_SELECTED_COLOR                 : Color = Color::RED;
-const PALLET_DEFAULT_COLOR                  : Color = Color::BLUE;
+use crate::{MouseContext, HIGHLIGHT_COLOR, SQUARE_SIZE, SQUARE_SPACING};
+
+const PALLET_SELECTED_COLOR : Color = Color::RED;
+const PALLET_DEFAULT_COLOR  : Color = Color::BLUE;
 
 const PALLET_START_POSITION : Vector2 = Vector2::new(10.0, 10.0);
 
@@ -110,16 +112,17 @@ impl MyIconServer<ImageContainer> {
         );
 
         for (name, image_container) in self.assets.iter() {
-            let texture = image_container.texture.as_ref();
-
-            if texture.is_none() { panel.add_none(); continue; }
+            let Some(texture) = image_container.texture.as_ref() else {
+                panel.add_none();
+                continue;
+            };
 
             let mut highlights = vec![];
 
             if self.get_default_name()  == name { highlights.push(PALLET_DEFAULT_COLOR) }
             if self.get_selected_name() == name { highlights.push(PALLET_SELECTED_COLOR) }
 
-            panel.add_with_highlight(texture.unwrap(), &highlights);
+            panel.add_with_highlight(texture, &highlights);
         }
 
         return panel;
@@ -128,11 +131,8 @@ impl MyIconServer<ImageContainer> {
     pub fn update_pallet(&mut self, mouse_context: &MouseContext) {
         let pallet_panel = self.to_pallet_panel();
 
-        let id = pallet_panel.get_hovered_id(&mouse_context);
+        let Some(id) = pallet_panel.get_hovered_id(&mouse_context) else { return; };
 
-        if id.is_none() { return; }
-        let id = id.unwrap();
-        
         let name = self.assets[id].0.clone();
 
         if mouse_context.mouse_left_pressed {

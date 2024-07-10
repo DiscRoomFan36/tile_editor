@@ -22,7 +22,6 @@ const WINDOW_HEIGHT : i32 = 600;
 const SQUARE_SIZE       : i32 = 64;
 const SQUARE_SIZE_F     : f32 = SQUARE_SIZE as f32;
 const SQUARE_SPACING    : i32 = 10;
-const SQUARE_SPACING_F  : f32 = SQUARE_SPACING as f32;
 
 const QUICK_SAVE_FILE : &str = "quick-save.json";
 
@@ -38,6 +37,14 @@ const BACKGROUND_COLOR                      : Color = Color::LIGHTGRAY;
 const HIGHLIGHT_COLOR                       : Color = Color::ORANGE;
 
 const GRID_START_POSITION   : Vector2 = Vector2::new(100.0, 100.0);
+
+// these thing have to go together, so why not make it official?
+// TODO, replace
+#[allow(dead_code)]
+struct GridHandler {
+    icon_server: MyIconServer<ImageContainer>,
+    grid: TileGrid<String>,
+}
 
 
 fn main() {
@@ -122,7 +129,7 @@ fn main() {
         }
 
         /* -------------------- MOUSE EVENT HANDLERS -------------------- */
-        let mut mouse_context = MouseContext ::make_context(&rl);
+        let mouse_context = MouseContext ::make_context(&rl);
         
         // don't need to check if open, dose that automatically 
         let new_image = file_dialog_context.update(&mouse_context, &mut rl);
@@ -152,7 +159,7 @@ fn main() {
 
         icon_server.update_pallet(&mouse_context);
 
-        update_grid_mouse_events(&mut mouse_context, &mut icon_server, &mut grid, GRID_START_POSITION);
+        update_grid_mouse_events(&mut grid, &mut icon_server, &mouse_context);
         
         /* -------------------- DRAWING -------------------- */
         let mut d = rl.begin_drawing(&thread);
@@ -162,25 +169,7 @@ fn main() {
 
         // TODO: Move the grid out of the way
         /* -------------------- DRAW GRID -------------------- */
-        let mut grid_panel = GridPanel::new_custom(
-            GRID_START_POSITION,
-            true, grid.cols,
-            64, 64, 10,
-            Some(Color::ORANGE), None
-        );
-
-        for i in 0..grid.rows*grid.cols {
-            let image_container = if let Some(name) = grid.get_from_index(i) {
-                icon_server.get_by_name(name).expect("Name exist in icon server")
-            } else {
-                icon_server.get_default_handle()
-            };
-
-            let texture = image_container.texture.as_ref();
-            if texture.is_none() { grid_panel.add_none(); continue; }
-
-            grid_panel.add(texture.unwrap());
-        }
+        let grid_panel = grid_to_pallet(&grid, &icon_server);
 
         grid_panel.draw_panel(&mut d, &mouse_context);
         /* -------------------- DRAW GRID -------------------- */
@@ -198,15 +187,6 @@ fn main() {
             .to_panel(&mut d)
             .draw_panel(&mut d, &mouse_context);
         /* -------------------- FILE DIALOG -------------------- */
-    }
-}
-
-fn new_square(start_pos: Vector2, pos: (usize, usize)) -> Rectangle {
-    let (x, y) = pos;
-    Rectangle {
-        x: start_pos.x + x as f32 * (SQUARE_SIZE_F + SQUARE_SPACING_F),
-        y: start_pos.y + y as f32 * (SQUARE_SIZE_F + SQUARE_SPACING_F),
-        width: SQUARE_SIZE_F, height: SQUARE_SIZE_F,
     }
 }
 
@@ -249,26 +229,49 @@ fn get_images_from_path(path: &Path) -> Vec<(String, ImageContainer)> {
         .collect()
 }
 
+fn grid_to_pallet<'a>(grid: &TileGrid<String>, icon_server: &'a MyIconServer<ImageContainer>) -> GridPanel<&'a Texture2D> {
+    let mut panel = GridPanel::new_custom(
+        GRID_START_POSITION,
+        true, grid.cols,
+        64, 64, 10,
+        Some(Color::ORANGE), None
+    );
+
+    for i in 0..grid.rows*grid.cols {
+        let image_container = if let Some(name) = grid.get_from_index(i) {
+            icon_server.get_by_name(name).expect("Name exist in icon server")
+        } else {
+            icon_server.get_default_handle()
+        };
+
+        let Some(texture) = image_container.texture.as_ref() else {
+            panel.add_none();
+            continue;
+        };
+
+        panel.add(texture);
+    }
+
+    return panel;
+}
 
 fn update_grid_mouse_events(
-    mouse_context: &mut MouseContext,
-    icon_server: &mut MyIconServer<ImageContainer>,
     grid: &mut TileGrid<String>,
-    start_pos: Vector2, // TODO: Refactor into context
+    icon_server: &MyIconServer<ImageContainer>,
+    mouse_context: &MouseContext,
 ) {
-    if mouse_context.over_file_dialog { return; }
-    
-    for i in 0..grid.rows*grid.cols {
-        let (x, y) = index_to_pos(i, grid.size());
-        let rec = new_square(start_pos, (x, y));
-        
-        if rec.check_collision_point_rec(mouse_context.mouse_pos) {
-            if mouse_context.mouse_left_pressed {
-                grid.set((x, y), Some(icon_server.get_selected_name().to_string()));
-            }
-            if mouse_context.mouse_right_pressed {
-                grid.set((x, y), None);
-            }
-        }
+    let grid_pallet = grid_to_pallet(grid, icon_server);
+
+    let id = grid_pallet.get_hovered_id(mouse_context);
+
+    let Some(id) = id else { return; };
+
+    let pos = index_to_pos(id, grid.size());
+
+    if mouse_context.mouse_left_pressed {
+        grid.set(pos, Some(icon_server.get_selected_name().to_string()));
+    }
+    if mouse_context.mouse_right_pressed {
+        grid.set(pos, None);
     }
 }
